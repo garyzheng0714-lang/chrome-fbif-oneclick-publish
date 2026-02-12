@@ -1,0 +1,745 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>i人春节放假日历 2026</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Noto+Sans+SC:wght@400;500;700;900&family=ZCOOL+KuaiLe&display=swap" rel="stylesheet">
+  <style>
+    :root {
+      --red-900: #6f070c;
+      --red-700: #b3121a;
+      --red-500: #d92f2f;
+      --gold-500: #f2b705;
+      --gold-300: #ffd45a;
+      --ink: #18141a;
+      --paper: #fff8ef;
+      --blue-500: #1f65c7;
+      --shadow: 0 14px 40px rgba(0, 0, 0, 0.24);
+    }
+
+    * {
+      box-sizing: border-box;
+    }
+
+    body {
+      margin: 0;
+      min-height: 100vh;
+      color: #fff;
+      font-family: "Noto Sans SC", sans-serif;
+      background:
+        radial-gradient(circle at 18% 10%, rgba(255, 212, 90, 0.26), transparent 35%),
+        radial-gradient(circle at 82% 22%, rgba(255, 84, 84, 0.22), transparent 28%),
+        linear-gradient(145deg, #3d0408, var(--red-900) 45%, #260205);
+      display: grid;
+      place-items: center;
+      padding: 28px 18px 38px;
+    }
+
+    .poster {
+      width: min(1120px, 96vw);
+      border-radius: 28px;
+      border: 2px solid rgba(255, 212, 90, 0.4);
+      background: linear-gradient(180deg, rgba(255, 255, 255, 0.05), rgba(255, 255, 255, 0.03));
+      box-shadow: var(--shadow);
+      padding: 24px 24px 30px;
+      position: relative;
+      overflow: hidden;
+      backdrop-filter: blur(3px);
+    }
+
+    .lantern {
+      position: absolute;
+      top: -12px;
+      width: 68px;
+      height: 92px;
+      border-radius: 50px;
+      background: linear-gradient(180deg, #ff5c56, #d51626 60%, #a20b15);
+      border: 3px solid #ffcc66;
+      box-shadow: 0 12px 24px rgba(0, 0, 0, 0.28);
+    }
+
+    .lantern::before {
+      content: "";
+      position: absolute;
+      top: -22px;
+      left: 50%;
+      transform: translateX(-50%);
+      width: 4px;
+      height: 24px;
+      background: #ffcc66;
+      border-radius: 3px;
+    }
+
+    .lantern::after {
+      content: "";
+      position: absolute;
+      bottom: -18px;
+      left: 50%;
+      transform: translateX(-50%);
+      width: 5px;
+      height: 18px;
+      background: #ffcc66;
+      border-radius: 3px;
+    }
+
+    .lantern.left {
+      left: 34px;
+      animation: sway-left 3.6s ease-in-out infinite;
+    }
+
+    .lantern.right {
+      right: 34px;
+      animation: sway-right 3.2s ease-in-out infinite;
+    }
+
+    h1 {
+      margin: 8px 0 4px;
+      text-align: center;
+      font-size: clamp(36px, 6.2vw, 72px);
+      line-height: 1;
+      font-family: "ZCOOL KuaiLe", cursive;
+      color: var(--gold-300);
+      text-shadow: 0 4px 0 rgba(111, 7, 12, 0.86), 0 0 24px rgba(255, 212, 90, 0.25);
+      letter-spacing: 2px;
+    }
+
+    .subtitle {
+      text-align: center;
+      margin: 0 auto 16px;
+      max-width: 880px;
+      font-size: clamp(14px, 1.9vw, 20px);
+      color: #ffe7be;
+    }
+
+    .subtitle strong {
+      color: #fff;
+      font-weight: 700;
+    }
+
+    .scene {
+      margin: 4px auto 20px;
+      max-width: 980px;
+      border: 1px dashed rgba(255, 212, 90, 0.42);
+      border-radius: 20px;
+      padding: 16px 20px 10px;
+      background: linear-gradient(180deg, rgba(255, 230, 180, 0.12), rgba(255, 230, 180, 0.04));
+      display: grid;
+      grid-template-columns: 1fr 1.2fr 1fr;
+      align-items: end;
+      gap: 10px;
+      position: relative;
+    }
+
+    .scene-title {
+      position: absolute;
+      top: 8px;
+      left: 50%;
+      transform: translateX(-50%);
+      font-size: 12px;
+      letter-spacing: 1px;
+      color: #ffd88f;
+      padding: 2px 8px;
+      border-radius: 999px;
+      background: rgba(0, 0, 0, 0.24);
+    }
+
+    .character {
+      position: relative;
+      width: 180px;
+      height: 240px;
+      margin-inline: auto;
+      transform-origin: bottom center;
+    }
+
+    .character .body {
+      position: absolute;
+      left: 52px;
+      width: 76px;
+      height: 164px;
+      background: #f6c515;
+      border: 4px solid #202020;
+      border-radius: 16px 20px 10px 10px;
+      overflow: hidden;
+    }
+
+    .character .eye {
+      position: absolute;
+      top: 28px;
+      width: 27px;
+      height: 27px;
+      border-radius: 50%;
+      background: #222;
+      border: 4px solid #f5f5f5;
+    }
+
+    .character .eye.left { left: 12px; }
+    .character .eye.right { right: 12px; }
+
+    .character .smile {
+      position: absolute;
+      top: 76px;
+      left: 50%;
+      transform: translateX(-50%);
+      width: 22px;
+      height: 10px;
+      border-bottom: 3px solid #202020;
+      border-radius: 0 0 20px 20px;
+    }
+
+    .character .leg {
+      position: absolute;
+      bottom: 12px;
+      width: 13px;
+      height: 56px;
+      background: #f6c515;
+      border: 4px solid #202020;
+      border-top: none;
+      border-radius: 0 0 8px 8px;
+    }
+
+    .character .leg.left { left: 68px; }
+    .character .leg.right { left: 98px; }
+
+    .character .foot {
+      position: absolute;
+      bottom: 0;
+      width: 34px;
+      height: 16px;
+      border: 4px solid #202020;
+      border-radius: 20px;
+      background: #f6c515;
+    }
+
+    .character .foot.left { left: 54px; }
+    .character .foot.right { left: 90px; }
+
+    .buddy {
+      position: absolute;
+      right: 24px;
+      bottom: 56px;
+      width: 48px;
+      height: 48px;
+      border-radius: 50%;
+      background: #f6c515;
+      border: 4px solid #202020;
+    }
+
+    .buddy::before,
+    .buddy::after {
+      content: "";
+      position: absolute;
+      top: 15px;
+      width: 7px;
+      height: 7px;
+      border-radius: 50%;
+      background: #202020;
+    }
+
+    .buddy::before { left: 12px; }
+    .buddy::after { right: 12px; }
+
+    .character.shy {
+      transform: scale(0.9) translateX(-8px);
+      opacity: 0.96;
+    }
+
+    .character.shy .body::before,
+    .character.shy .body::after {
+      content: "";
+      position: absolute;
+      top: 26px;
+      width: 22px;
+      height: 22px;
+      border: 4px solid #202020;
+      border-radius: 50%;
+      background: rgba(31, 101, 199, 0.86);
+    }
+
+    .character.shy .body::before { left: -10px; }
+    .character.shy .body::after { right: -10px; }
+
+    .character.shy .tag {
+      position: absolute;
+      left: 6px;
+      top: 10px;
+      font-size: 12px;
+      color: #ffe9ca;
+    }
+
+    .character.brave .body::before {
+      content: "";
+      position: absolute;
+      inset: 96px 0 0;
+      background: linear-gradient(180deg, #d7182b, #a10f1d);
+      border-top: 3px solid rgba(255, 220, 154, 0.85);
+    }
+
+    .character.brave .body::after {
+      content: "福";
+      position: absolute;
+      top: 112px;
+      left: 50%;
+      transform: translateX(-50%);
+      width: 28px;
+      height: 28px;
+      border-radius: 8px;
+      background: #f7d777;
+      color: #b60f1b;
+      font-weight: 900;
+      font-size: 18px;
+      display: grid;
+      place-items: center;
+      border: 2px solid #7b0f18;
+    }
+
+    .character.brave {
+      animation: bob 2.8s ease-in-out infinite;
+    }
+
+    .character.shy {
+      animation: tremble 0.55s ease-in-out infinite;
+    }
+
+    .firecracker-wrap {
+      position: relative;
+      align-self: center;
+      padding-bottom: 18px;
+      margin-inline: auto;
+      width: 100%;
+      max-width: 360px;
+    }
+
+    .firecracker-label {
+      text-align: center;
+      margin-bottom: 8px;
+      color: #ffd97f;
+      font-size: 13px;
+      letter-spacing: 1px;
+    }
+
+    .firecracker {
+      margin-inline: auto;
+      height: 88px;
+      width: 260px;
+      position: relative;
+      display: flex;
+      flex-wrap: wrap;
+      gap: 8px;
+      justify-content: center;
+      align-content: center;
+      padding-inline: 4px;
+      background: rgba(0, 0, 0, 0.2);
+      border-radius: 12px;
+      border: 1px solid rgba(255, 212, 90, 0.25);
+    }
+
+    .firecracker span {
+      width: 16px;
+      height: 26px;
+      background: linear-gradient(180deg, #f44343, #a30f19);
+      border: 2px solid #ffd97f;
+      border-radius: 6px;
+    }
+
+    .spark {
+      position: absolute;
+      top: 4px;
+      right: 24px;
+      width: 12px;
+      height: 12px;
+      background: radial-gradient(circle, #fff2bd 10%, #ffbf28 52%, transparent 58%);
+      filter: drop-shadow(0 0 7px #ffd875);
+      animation: flash 0.45s steps(2, end) infinite;
+    }
+
+    .spark::before,
+    .spark::after {
+      content: "";
+      position: absolute;
+      inset: 0;
+      border-radius: 50%;
+      border: 1px solid rgba(255, 216, 117, 0.7);
+      transform: scale(1.8);
+    }
+
+    .calendar-card {
+      background: var(--paper);
+      color: var(--ink);
+      border-radius: 22px;
+      border: 4px solid #8d101c;
+      box-shadow: 0 16px 30px rgba(0, 0, 0, 0.26);
+      padding: 16px 16px 18px;
+    }
+
+    .calendar-head {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      gap: 8px;
+      padding-inline: 4px;
+    }
+
+    .calendar-head h2 {
+      margin: 0;
+      font-size: clamp(24px, 3vw, 36px);
+      color: #901122;
+      letter-spacing: 1px;
+      font-family: "ZCOOL KuaiLe", cursive;
+    }
+
+    .calendar-head .badge {
+      background: #901122;
+      color: #ffe6c5;
+      border-radius: 999px;
+      padding: 4px 10px;
+      font-size: 12px;
+      font-weight: 700;
+    }
+
+    .legend {
+      margin: 8px 0 10px;
+      display: flex;
+      gap: 10px;
+      flex-wrap: wrap;
+      font-size: 13px;
+    }
+
+    .legend span {
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      border: 1px solid #ead5bc;
+      border-radius: 999px;
+      padding: 4px 10px;
+      background: #fffdf7;
+    }
+
+    .dot {
+      width: 10px;
+      height: 10px;
+      border-radius: 50%;
+      display: inline-block;
+    }
+
+    .dot.holiday { background: #f0b700; }
+    .dot.work { background: #2064c5; }
+    .dot.weekend { background: #efdfcc; border: 1px solid #d6bb94; }
+
+    .weekday-grid,
+    .date-grid {
+      display: grid;
+      grid-template-columns: repeat(7, minmax(0, 1fr));
+      gap: 8px;
+    }
+
+    .weekday {
+      text-align: center;
+      font-size: 13px;
+      font-weight: 700;
+      color: #7b3e18;
+      padding-block: 4px;
+    }
+
+    .day {
+      border: 1px solid #ecdcc6;
+      border-radius: 12px;
+      min-height: 76px;
+      padding: 8px 8px 6px;
+      background: #fffdfa;
+      position: relative;
+      display: flex;
+      flex-direction: column;
+      justify-content: space-between;
+      overflow: hidden;
+    }
+
+    .day.empty {
+      background: linear-gradient(145deg, #f5ede2, #f0e6d7);
+      border-style: dashed;
+      min-height: 66px;
+    }
+
+    .day .num {
+      font-size: 18px;
+      font-weight: 800;
+      color: #3b2b1c;
+      line-height: 1;
+    }
+
+    .day .meta {
+      font-size: 11px;
+      color: #734f32;
+      font-weight: 600;
+    }
+
+    .day .tag {
+      font-size: 10px;
+      width: fit-content;
+      padding: 2px 6px;
+      border-radius: 999px;
+      color: #fff;
+      font-weight: 700;
+      letter-spacing: .5px;
+    }
+
+    .day.weekend:not(.holiday):not(.workday) {
+      background: #faf1e4;
+    }
+
+    .day.holiday {
+      background: linear-gradient(170deg, #ffe8a6, #f3bd1e 84%);
+      border-color: #ca8f00;
+      box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.4);
+    }
+
+    .day.holiday .tag {
+      background: #b8121b;
+    }
+
+    .day.workday {
+      background: linear-gradient(170deg, #d8ebff, #9fcbff 86%);
+      border-color: #2a76de;
+    }
+
+    .day.workday .tag {
+      background: #155fbe;
+    }
+
+    .day.note::after {
+      content: attr(data-note);
+      position: absolute;
+      top: 6px;
+      right: 6px;
+      font-size: 10px;
+      color: #fff;
+      background: rgba(120, 6, 15, 0.72);
+      border-radius: 999px;
+      padding: 2px 5px;
+    }
+
+    .footer-note {
+      margin-top: 10px;
+      font-size: 12px;
+      color: #7c4f24;
+      text-align: right;
+    }
+
+    @keyframes sway-left {
+      0%, 100% { transform: rotate(-6deg); }
+      50% { transform: rotate(5deg); }
+    }
+
+    @keyframes sway-right {
+      0%, 100% { transform: rotate(4deg); }
+      50% { transform: rotate(-5deg); }
+    }
+
+    @keyframes flash {
+      0%, 100% { opacity: 1; transform: scale(1); }
+      50% { opacity: 0.4; transform: scale(0.82); }
+    }
+
+    @keyframes bob {
+      0%, 100% { transform: translateY(0); }
+      50% { transform: translateY(-5px); }
+    }
+
+    @keyframes tremble {
+      0%, 100% { transform: scale(0.9) translateX(-8px) rotate(-1deg); }
+      50% { transform: scale(0.9) translateX(-8px) rotate(1deg); }
+    }
+
+    @media (max-width: 930px) {
+      .poster {
+        padding-inline: 14px;
+      }
+
+      .scene {
+        grid-template-columns: 1fr;
+        gap: 0;
+        padding-top: 26px;
+      }
+
+      .character {
+        margin-block: 6px;
+      }
+
+      .firecracker-wrap {
+        margin-block: 8px 2px;
+      }
+
+      .calendar-card {
+        padding: 12px;
+      }
+
+      .weekday-grid,
+      .date-grid {
+        gap: 5px;
+      }
+
+      .day {
+        min-height: 70px;
+        padding: 6px;
+      }
+
+      .day .num {
+        font-size: 16px;
+      }
+    }
+  </style>
+</head>
+<body>
+  <main class="poster">
+    <div class="lantern left" aria-hidden="true"></div>
+    <div class="lantern right" aria-hidden="true"></div>
+
+    <h1>i人春节放假日历</h1>
+    <p class="subtitle">
+      <strong>2026 年春节安排：</strong>
+      2 月 15 日（农历腊月二十八，周日）至 2 月 23 日（农历正月初七，周一）放假调休，共 9 天；
+      2 月 14 日（周六）、2 月 28 日（周六）上班。
+    </p>
+
+    <section class="scene" aria-label="i人春节场景">
+      <p class="scene-title">i人剧情：一个分身放鞭炮，另一个分身捂耳朵躲远远</p>
+
+      <div class="character shy">
+        <div class="body">
+          <div class="eye left"></div>
+          <div class="eye right"></div>
+          <div class="smile"></div>
+        </div>
+        <div class="leg left"></div>
+        <div class="leg right"></div>
+        <div class="foot left"></div>
+        <div class="foot right"></div>
+        <div class="buddy"></div>
+        <span class="tag">捂耳朵中</span>
+      </div>
+
+      <div class="firecracker-wrap">
+        <div class="firecracker-label">爆竹声中迎新春</div>
+        <div class="firecracker" aria-hidden="true">
+          <span></span><span></span><span></span><span></span><span></span><span></span>
+          <span></span><span></span><span></span><span></span><span></span><span></span>
+          <span></span><span></span><span></span><span></span><span></span><span></span>
+          <span></span><span></span><span></span><span></span><span></span><span></span>
+          <i class="spark"></i>
+        </div>
+      </div>
+
+      <div class="character brave">
+        <div class="body">
+          <div class="eye left"></div>
+          <div class="eye right"></div>
+          <div class="smile"></div>
+        </div>
+        <div class="leg left"></div>
+        <div class="leg right"></div>
+        <div class="foot left"></div>
+        <div class="foot right"></div>
+        <div class="buddy"></div>
+      </div>
+    </section>
+
+    <section class="calendar-card" aria-label="2026年2月日历">
+      <div class="calendar-head">
+        <h2>2026 年 2 月</h2>
+        <span class="badge">春节放假 9 天</span>
+      </div>
+
+      <div class="legend">
+        <span><i class="dot holiday"></i> 放假</span>
+        <span><i class="dot work"></i> 调休上班</span>
+        <span><i class="dot weekend"></i> 周末</span>
+      </div>
+
+      <div class="weekday-grid" aria-hidden="true">
+        <div class="weekday">日</div>
+        <div class="weekday">一</div>
+        <div class="weekday">二</div>
+        <div class="weekday">三</div>
+        <div class="weekday">四</div>
+        <div class="weekday">五</div>
+        <div class="weekday">六</div>
+      </div>
+
+      <div id="dateGrid" class="date-grid"></div>
+      <div class="footer-note">注：标记信息按你提供的春节调休时间制作</div>
+    </section>
+  </main>
+
+  <script>
+    (function renderCalendar() {
+      const year = 2026;
+      const month = 1; // 0-based: 1 means February.
+      const holidayDays = new Set([15, 16, 17, 18, 19, 20, 21, 22, 23]);
+      const workDays = new Set([14, 28]);
+      const lunarMeta = {
+        15: "农历腊月二十八",
+        23: "农历正月初七"
+      };
+      const noteMeta = {
+        14: "调休",
+        15: "开始",
+        23: "结束",
+        28: "调休"
+      };
+
+      const grid = document.getElementById("dateGrid");
+      const firstWeekDay = new Date(year, month, 1).getDay();
+      const daysInMonth = new Date(year, month + 1, 0).getDate();
+
+      for (let i = 0; i < firstWeekDay; i += 1) {
+        const empty = document.createElement("div");
+        empty.className = "day empty";
+        grid.appendChild(empty);
+      }
+
+      for (let day = 1; day <= daysInMonth; day += 1) {
+        const date = new Date(year, month, day);
+        const weekDay = date.getDay();
+        const isWeekend = weekDay === 0 || weekDay === 6;
+        const isHoliday = holidayDays.has(day);
+        const isWorkday = workDays.has(day);
+
+        const card = document.createElement("div");
+        card.classList.add("day");
+        if (isWeekend) card.classList.add("weekend");
+        if (isHoliday) card.classList.add("holiday");
+        if (isWorkday) card.classList.add("workday");
+        if (noteMeta[day]) {
+          card.classList.add("note");
+          card.dataset.note = noteMeta[day];
+        }
+
+        const dayNum = document.createElement("div");
+        dayNum.className = "num";
+        dayNum.textContent = String(day);
+
+        const meta = document.createElement("div");
+        meta.className = "meta";
+        meta.textContent = lunarMeta[day] || "\u00a0";
+
+        const tag = document.createElement("span");
+        tag.className = "tag";
+        tag.style.visibility = "hidden";
+
+        if (isHoliday) {
+          tag.textContent = "休";
+          tag.style.visibility = "visible";
+        } else if (isWorkday) {
+          tag.textContent = "班";
+          tag.style.visibility = "visible";
+        }
+
+        card.append(dayNum, meta, tag);
+        grid.appendChild(card);
+      }
+    }());
+  </script>
+</body>
+</html>

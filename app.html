@@ -1,0 +1,143 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>FBIF OneClick Publish</title>
+    <link rel="stylesheet" href="styles/app.css" />
+  </head>
+  <body>
+    <div class="page-shell">
+      <header class="topbar panel">
+        <div class="brand">
+          <p class="eyebrow">FBIF Workspace</p>
+          <h1>全平台内容分发中心</h1>
+        </div>
+        <div class="topbar-actions">
+          <label class="follow-toggle" for="followTabsInput">
+            <input id="followTabsInput" type="checkbox" checked />
+            <span>跟随标签页跳转</span>
+          </label>
+          <button id="clearLogsButton" class="ghost">清空日志</button>
+        </div>
+      </header>
+
+      <main class="workspace">
+        <section class="left-column panel">
+          <div class="section-head">
+            <h2>内容提取</h2>
+            <p>输入公众号链接，提取标题、封面、正文与图片顺序。</p>
+          </div>
+
+          <label class="field-label" for="urlInput">公众号文章链接</label>
+          <div class="input-row">
+            <input id="urlInput" type="url" placeholder="https://mp.weixin.qq.com/s?..." />
+            <button id="extractButton" class="primary">智能提取</button>
+          </div>
+
+          <label class="field-label" for="selectorInput">手动补提（可选 CSS 选择器）</label>
+          <div class="input-row manual-row">
+            <input id="selectorInput" type="text" placeholder="#js_content" />
+            <button id="manualExtractButton" class="ghost">手动补提</button>
+            <button id="refreshExtractButton" class="ghost">强制刷新</button>
+          </div>
+
+          <p id="extractStatus" class="status" data-tone="info"></p>
+
+          <div class="metrics-grid">
+            <article>
+              <span>字数</span>
+              <strong id="wordCount">0</strong>
+            </article>
+            <article>
+              <span>图片数</span>
+              <strong id="imageCount">0</strong>
+            </article>
+            <article>
+              <span>段落数</span>
+              <strong id="paragraphCount">0</strong>
+            </article>
+          </div>
+
+          <div class="cover-card">
+            <div class="cover-head">
+              <h3>封面图</h3>
+              <button id="replaceCoverButton" class="ghost">替换封面</button>
+              <input id="coverFileInput" type="file" accept="image/*" hidden />
+            </div>
+            <div class="cover-preview">
+              <img id="coverPreview" class="placeholder" alt="封面预览" />
+            </div>
+          </div>
+
+          <div class="validation-card">
+            <h3>完整性校验</h3>
+            <ul id="validationList"></ul>
+          </div>
+
+          <div class="logs-card">
+            <h3>运行日志</h3>
+            <ul id="logList"></ul>
+          </div>
+        </section>
+
+        <section class="editor-column panel" id="editorPanel">
+          <div class="editor-title-row">
+            <label class="field-label" for="titleInput">文章标题</label>
+            <input id="titleInput" type="text" placeholder="提取后可继续编辑标题" />
+          </div>
+
+          <div id="toolbar" class="toolbar">
+            <button data-cmd="bold" title="加粗">B</button>
+            <button data-cmd="italic" title="斜体">I</button>
+            <button data-cmd="underline" title="下划线">U</button>
+            <button data-cmd="insertUnorderedList" title="无序列表">• 列表</button>
+            <button data-cmd="insertOrderedList" title="有序列表">1. 列表</button>
+            <button data-cmd="createLink" title="插入链接">链接</button>
+            <button data-cmd="removeFormat" title="清除格式">清除</button>
+            <button data-cmd="undo" title="撤销">撤销</button>
+            <button data-cmd="redo" title="重做">重做</button>
+            <button id="formatPainterButton" type="button" title="格式刷">格式刷</button>
+            <button id="fullscreenButton" type="button" title="全屏编辑">全屏编辑</button>
+            <select id="headingSelect" title="标题层级">
+              <option value="p">正文</option>
+              <option value="h1">H1</option>
+              <option value="h2">H2</option>
+              <option value="h3">H3</option>
+            </select>
+          </div>
+
+          <div id="editor" class="editor" contenteditable="true"></div>
+        </section>
+      </main>
+
+      <footer class="distribution panel">
+        <div class="distribution-head">
+          <h2>平台分发</h2>
+          <p>选择平台后点击同步发布，系统将依次打开对应发布页并自动填充内容。</p>
+        </div>
+
+        <div id="platformList" class="platform-list"></div>
+
+        <div class="publish-row">
+          <button id="publishButton" class="primary giant">同步发布</button>
+          <div class="progress-wrap">
+            <div class="progress-track">
+              <div id="publishProgressBar" class="progress-bar"></div>
+            </div>
+            <p id="publishProgressText">待发布</p>
+          </div>
+        </div>
+
+        <ul id="publishResultList" class="publish-result-list"></ul>
+
+        <div class="fallback-card">
+          <h3>发布失败回退草稿</h3>
+          <ul id="failedDraftList"></ul>
+        </div>
+      </footer>
+    </div>
+
+    <script type="module" src="src/app.js"></script>
+  </body>
+</html>

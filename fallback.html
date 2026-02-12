@@ -1,0 +1,179 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>发布回退草稿</title>
+    <style>
+      :root {
+        color-scheme: light;
+      }
+      body {
+        margin: 0;
+        padding: 1rem;
+        font-family: 'PingFang SC', 'Hiragino Sans GB', 'Noto Sans CJK SC', 'Microsoft YaHei', sans-serif;
+        background: linear-gradient(165deg, #fef9f0, #f2ede3);
+        color: #1f2a1d;
+      }
+      .card {
+        max-width: 760px;
+        margin: 0 auto;
+        border: 1px solid rgba(78, 85, 58, 0.25);
+        border-radius: 14px;
+        background: rgba(255, 255, 255, 0.86);
+        padding: 1rem;
+      }
+      h1 {
+        margin: 0;
+        font-size: 1.2rem;
+      }
+      p {
+        margin: 0.55rem 0;
+        color: #53604d;
+        font-size: 0.92rem;
+      }
+      ul {
+        list-style: none;
+        margin: 1rem 0 0;
+        padding: 0;
+      }
+      li {
+        border: 1px solid rgba(78, 85, 58, 0.22);
+        border-radius: 10px;
+        margin-bottom: 0.6rem;
+        padding: 0.7rem;
+      }
+      strong {
+        display: block;
+      }
+      .meta {
+        color: #5e6d58;
+        font-size: 0.84rem;
+      }
+      button {
+        margin-top: 0.5rem;
+        border: none;
+        border-radius: 8px;
+        padding: 0.45rem 0.6rem;
+        cursor: pointer;
+        font-weight: 600;
+        background: rgba(0, 92, 83, 0.1);
+        color: #01483f;
+      }
+      pre {
+        white-space: pre-wrap;
+        word-break: break-word;
+        border-radius: 8px;
+        border: 1px dashed rgba(78, 85, 58, 0.32);
+        background: rgba(255, 255, 255, 0.84);
+        padding: 0.6rem;
+        margin-top: 0.55rem;
+        max-height: 220px;
+        overflow: auto;
+      }
+    </style>
+  </head>
+  <body>
+    <main class="card">
+      <h1>自动发布失败回退</h1>
+      <p id="subtitle">已保存失败草稿，可复制后手动粘贴到对应平台。</p>
+      <ul id="draftList"></ul>
+    </main>
+
+    <script>
+      const STORAGE_KEY = 'fbif_failed_drafts_v1';
+      const platformId = new URLSearchParams(location.search).get('platform');
+
+      const platformNameMap = {
+        xiaohongshu: '小红书',
+        zhihu: '知乎',
+        toutiao: '今日头条',
+        baijiahao: '百家号',
+        bilibili: 'B站专栏'
+      };
+
+      const subtitle = document.getElementById('subtitle');
+      const draftList = document.getElementById('draftList');
+
+      if (platformId) {
+        subtitle.textContent = `平台：${platformNameMap[platformId] || platformId}，请复制最新草稿后手动完成发布。`;
+      }
+
+      chrome.storage.local.get(STORAGE_KEY).then((store) => {
+        const drafts = Array.isArray(store[STORAGE_KEY]) ? store[STORAGE_KEY] : [];
+        const filtered = platformId ? drafts.filter((draft) => draft.platformId === platformId) : drafts;
+        render(filtered.slice(0, 5));
+      });
+
+      function render(drafts) {
+        draftList.innerHTML = '';
+
+        if (!drafts.length) {
+          const li = document.createElement('li');
+          li.textContent = '暂无可用回退草稿。';
+          draftList.appendChild(li);
+          return;
+        }
+
+        drafts.forEach((draft) => {
+          const li = document.createElement('li');
+          const content = [
+            `标题：${draft.title || ''}`,
+            `封面：${draft.coverUrl || '无'}`,
+            '',
+            draft.textPlain || stripHtml(draft.contentHtml || '')
+          ]
+            .join('\n')
+            .trim();
+
+          const createdAt = new Date(draft.createdAt).toLocaleString('zh-CN', { hour12: false });
+
+          li.innerHTML = `
+            <strong>${platformNameMap[draft.platformId] || draft.platformId}</strong>
+            <span class="meta">${createdAt} · ${draft.errorMessage || '未知错误'}</span>
+            <button type="button">复制草稿</button>
+            <pre>${escapeHtml(content)}</pre>
+          `;
+
+          const button = li.querySelector('button');
+          button.addEventListener('click', async () => {
+            await copyText(content);
+            button.textContent = '已复制';
+            setTimeout(() => {
+              button.textContent = '复制草稿';
+            }, 1000);
+          });
+
+          draftList.appendChild(li);
+        });
+      }
+
+      function stripHtml(html) {
+        return html.replace(/<[^>]+>/g, ' ').replace(/\s+/g, ' ').trim();
+      }
+
+      function escapeHtml(text) {
+        return text
+          .replace(/&/g, '&amp;')
+          .replace(/</g, '&lt;')
+          .replace(/>/g, '&gt;')
+          .replace(/"/g, '&quot;')
+          .replace(/'/g, '&#39;');
+      }
+
+      async function copyText(text) {
+        if (navigator.clipboard && navigator.clipboard.writeText) {
+          await navigator.clipboard.writeText(text);
+          return;
+        }
+
+        const textarea = document.createElement('textarea');
+        textarea.value = text;
+        document.body.appendChild(textarea);
+        textarea.select();
+        document.execCommand('copy');
+        textarea.remove();
+      }
+    </script>
+  </body>
+</html>
