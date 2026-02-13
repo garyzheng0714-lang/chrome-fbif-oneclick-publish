@@ -1,3 +1,5 @@
+import { PLATFORM_ADAPTER_MAP } from './src/publishers/index.js';
+
 const APP_PAGE_URL = chrome.runtime.getURL('app.html');
 const FALLBACK_PAGE_URL = chrome.runtime.getURL('fallback.html');
 
@@ -14,33 +16,16 @@ const MAX_CACHE_ITEMS = 20;
 const MAX_LOG_ITEMS = 400;
 const MAX_FAILED_DRAFTS = 50;
 
-const PLATFORMS = {
-  xiaohongshu: {
-    id: 'xiaohongshu',
-    name: '小红书',
-    publishUrl: 'https://creator.xiaohongshu.com/publish/publish?from=tab_switch&target=article'
-  },
-  zhihu: {
-    id: 'zhihu',
-    name: '知乎',
-    publishUrl: 'https://zhuanlan.zhihu.com/p/2005305520517572521/edit'
-  },
-  toutiao: {
-    id: 'toutiao',
-    name: '今日头条',
-    publishUrl: 'https://mp.toutiao.com/profile_v4/graphic/publish'
-  },
-  baijiahao: {
-    id: 'baijiahao',
-    name: '百家号',
-    publishUrl: 'https://baijiahao.baidu.com/builder/rc/edit'
-  },
-  bilibili: {
-    id: 'bilibili',
-    name: 'B站专栏',
-    publishUrl: 'https://member.bilibili.com/platform/upload/text/edit'
-  }
-};
+const PLATFORMS = Object.fromEntries(
+  Object.values(PLATFORM_ADAPTER_MAP).map((adapter) => [
+    adapter.id,
+    {
+      id: adapter.id,
+      name: adapter.name,
+      publishUrl: adapter.publishUrl
+    }
+  ])
+);
 
 chrome.action.onClicked.addListener(async () => {
   await chrome.tabs.create({ url: APP_PAGE_URL });
@@ -458,6 +443,7 @@ async function publishWithRetry(platform, content, current, total, options = {})
 
 async function publishOnPlatform(platform, content, options = {}) {
   const followTabs = Boolean(options.followTabs);
+  const adapter = PLATFORM_ADAPTER_MAP[platform.id];
   const tab = await chrome.tabs.create({ url: platform.publishUrl, active: followTabs });
   const tabId = tab.id;
 
@@ -472,45 +458,54 @@ async function publishOnPlatform(platform, content, options = {}) {
   await waitForTabComplete(tabId, TAB_LOAD_TIMEOUT_MS);
   await delay(1500);
 
-  if (platform.id === 'xiaohongshu') {
-    const detail = await publishXiaohongshuBySteps(tabId, content, platform.name);
-    return {
-      tabId,
-      warnings: detail.warnings ?? [],
-      detail
-    };
+  if (!adapter?.publishApi) {
+    throw new Error(`平台适配器缺失：${platform.id}`);
   }
 
-  const executeResult = await withTimeout(
-    chrome.scripting.executeScript({
-      target: { tabId },
-      world: 'ISOLATED',
-      func: autoFillPublishPage,
-      args: [
-        {
-          platformId: platform.id,
-          title: content.title,
-          coverUrl: content.coverUrl,
-          contentHtml: content.contentHtml,
-          textPlain: content.textPlain,
-          images: content.images,
-          timeoutMs: 12_000
-        }
-      ]
-    }),
-    50_000,
-    `${platform.name} 自动填充超时`
-  );
+  const extractedPayload = adapter.extractor ? adapter.extractor(content) : { ...content };
+  const processedPayload = adapter.contentProcessor
+    ? adapter.contentProcessor(extractedPayload)
+    : extractedPayload;
+  const imageProcessedPayload = adapter.imageProcessor
+    ? await adapter.imageProcessor(processedPayload)
+    : processedPayload;
 
-  const detail = executeResult?.[0]?.result;
-  if (!detail?.ok) {
-    throw new Error(detail?.error || `${platform.name} 自动填充失败`);
+  const publishPayload = {
+    ...imageProcessedPayload,
+    platformId: platform.id,
+    platformName: platform.name
+  };
+
+  const runtime = {
+    withTimeout,
+    autoFillFunc: autoFillPublishPage,
+    executeInTab: ({ tabId: targetTabId, func, args = [], timeoutMs = 50_000 }) =>
+      withTimeout(
+        chrome.scripting.executeScript({
+          target: { tabId: targetTabId },
+          world: 'ISOLATED',
+          func,
+          args
+        }),
+        timeoutMs,
+        `${platform.name} 自动填充超时`
+      )
+  };
+
+  const adapterResult = await adapter.publishApi({
+    tabId,
+    payload: publishPayload,
+    runtime
+  });
+
+  if (!adapterResult?.ok) {
+    throw new Error(adapterResult?.error || `${platform.name} 自动填充失败`);
   }
 
   return {
     tabId,
-    warnings: detail.warnings ?? [],
-    detail
+    warnings: adapterResult.warnings ?? [],
+    detail: adapterResult.detail ?? {}
   };
 }
 

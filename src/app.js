@@ -1,21 +1,16 @@
-import { RichEditor } from './editor.js';
 import { PLATFORM_DEFINITIONS, PLATFORM_NAME_MAP } from './platforms.js';
 
 const dom = {
   urlInput: document.getElementById('urlInput'),
-  selectorInput: document.getElementById('selectorInput'),
   extractButton: document.getElementById('extractButton'),
-  manualExtractButton: document.getElementById('manualExtractButton'),
-  refreshExtractButton: document.getElementById('refreshExtractButton'),
   extractStatus: document.getElementById('extractStatus'),
   wordCount: document.getElementById('wordCount'),
   imageCount: document.getElementById('imageCount'),
   paragraphCount: document.getElementById('paragraphCount'),
   validationList: document.getElementById('validationList'),
   coverPreview: document.getElementById('coverPreview'),
-  replaceCoverButton: document.getElementById('replaceCoverButton'),
-  coverFileInput: document.getElementById('coverFileInput'),
   titleInput: document.getElementById('titleInput'),
+  contentPreview: document.getElementById('contentPreview'),
   platformList: document.getElementById('platformList'),
   publishButton: document.getElementById('publishButton'),
   publishProgressBar: document.getElementById('publishProgressBar'),
@@ -24,13 +19,7 @@ const dom = {
   logList: document.getElementById('logList'),
   failedDraftList: document.getElementById('failedDraftList'),
   clearLogsButton: document.getElementById('clearLogsButton'),
-  followTabsInput: document.getElementById('followTabsInput'),
-  editor: document.getElementById('editor'),
-  toolbar: document.getElementById('toolbar'),
-  headingSelect: document.getElementById('headingSelect'),
-  editorPanel: document.getElementById('editorPanel'),
-  formatPainterButton: document.getElementById('formatPainterButton'),
-  fullscreenButton: document.getElementById('fullscreenButton')
+  followTabsInput: document.getElementById('followTabsInput')
 };
 
 const state = {
@@ -39,15 +28,6 @@ const state = {
   failedDrafts: []
 };
 
-const editor = new RichEditor({
-  editor: dom.editor,
-  toolbar: dom.toolbar,
-  headingSelect: dom.headingSelect,
-  editorPanel: dom.editorPanel,
-  formatPainterButton: dom.formatPainterButton,
-  fullscreenButton: dom.fullscreenButton
-});
-
 init().catch((error) => {
   setExtractStatus(`初始化失败：${error instanceof Error ? error.message : String(error)}`, 'error');
 });
@@ -55,7 +35,6 @@ init().catch((error) => {
 async function init() {
   renderPlatformCards();
   bindEvents();
-  setExtractStatus('请输入微信公众号链接并点击“智能提取”');
   await refreshLogs();
   await refreshFailedDrafts();
 
@@ -65,64 +44,27 @@ async function init() {
     }
 
     if (message?.type === 'LOG_UPDATE') {
-      state.logs = [message.payload, ...state.logs].slice(0, 60);
+      state.logs = [message.payload, ...state.logs].slice(0, 80);
       renderLogs(state.logs);
     }
   });
-
-  window.setInterval(() => {
-    refreshLogs().catch(() => undefined);
-  }, 8_000);
 }
 
 function bindEvents() {
-  dom.extractButton.addEventListener('click', () => {
-    runExtraction({ forceRefresh: false, useManualSelector: false }).catch((error) => {
-      setExtractStatus(error instanceof Error ? error.message : String(error), 'error');
-    });
-  });
-
-  dom.refreshExtractButton.addEventListener('click', () => {
-    runExtraction({ forceRefresh: true, useManualSelector: false }).catch((error) => {
-      setExtractStatus(error instanceof Error ? error.message : String(error), 'error');
-    });
-  });
-
-  dom.manualExtractButton.addEventListener('click', () => {
-    runExtraction({ forceRefresh: true, useManualSelector: true }).catch((error) => {
-      setExtractStatus(error instanceof Error ? error.message : String(error), 'error');
-    });
-  });
-
-  dom.replaceCoverButton.addEventListener('click', () => {
-    dom.coverFileInput.click();
-  });
-
-  dom.coverFileInput.addEventListener('change', async () => {
-    const file = dom.coverFileInput.files?.[0];
-    if (!file) {
-      return;
-    }
-
+  dom.extractButton.addEventListener('click', async () => {
     try {
-      const compressed = await compressImage(file);
-      dom.coverPreview.src = compressed;
-      if (!state.article) {
-        state.article = createEmptyArticle();
-      }
-      state.article.coverUrl = compressed;
-      setExtractStatus('封面已替换并压缩完成');
+      await runExtraction();
     } catch (error) {
-      setExtractStatus(`封面处理失败：${error instanceof Error ? error.message : String(error)}`, 'error');
-    } finally {
-      dom.coverFileInput.value = '';
+      setExtractStatus(error instanceof Error ? error.message : String(error), 'error');
     }
   });
 
-  dom.publishButton.addEventListener('click', () => {
-    runPublishing().catch((error) => {
+  dom.publishButton.addEventListener('click', async () => {
+    try {
+      await runPublishing();
+    } catch (error) {
       dom.publishProgressText.textContent = `发布失败：${error instanceof Error ? error.message : String(error)}`;
-    });
+    }
   });
 
   dom.clearLogsButton.addEventListener('click', async () => {
@@ -131,29 +73,23 @@ function bindEvents() {
       setExtractStatus(`日志清理失败：${result.error}`, 'error');
       return;
     }
-
     await refreshLogs();
-    setExtractStatus('日志已清空');
+    setExtractStatus('日志已清空', 'success');
   });
 
   dom.failedDraftList.addEventListener('click', async (event) => {
     const button = event.target.closest('[data-copy-draft]');
-    if (!button) {
-      return;
-    }
+    if (!button) return;
 
     const draftId = button.dataset.copyDraft;
     const draft = state.failedDrafts.find((item) => item.id === draftId);
-
-    if (!draft) {
-      return;
-    }
+    if (!draft) return;
 
     const text = [
       `标题：${draft.title}`,
       `封面：${draft.coverUrl || '无'}`,
       '',
-      draft.textPlain || stripHtml(draft.contentHtml)
+      draft.textPlain || stripHtml(draft.contentHtml || '')
     ]
       .join('\n')
       .trim();
@@ -172,31 +108,22 @@ function renderPlatformCards() {
   PLATFORM_DEFINITIONS.forEach((platform) => {
     const label = document.createElement('label');
     label.className = 'platform-card';
-
     label.innerHTML = `
       <input type="checkbox" class="platform-checkbox" value="${platform.id}" />
       <span class="platform-icon">${platform.icon}</span>
-      <span class="platform-meta">
-        <span class="platform-name">${platform.name}</span>
-        <span class="platform-desc">${platform.description}</span>
-      </span>
+      <span class="platform-name">${platform.name}</span>
+      <small>${platform.description}</small>
     `;
-
     dom.platformList.appendChild(label);
   });
 }
 
-async function runExtraction({ forceRefresh, useManualSelector }) {
+async function runExtraction() {
   const url = dom.urlInput.value.trim();
-  const manualSelector = useManualSelector ? dom.selectorInput.value.trim() : '';
   const followTabs = Boolean(dom.followTabsInput?.checked);
 
   if (!url) {
     throw new Error('请输入公众号链接');
-  }
-
-  if (useManualSelector && !manualSelector) {
-    throw new Error('手动补提模式需要填写 CSS 选择器');
   }
 
   setExtractBusy(true);
@@ -206,8 +133,8 @@ async function runExtraction({ forceRefresh, useManualSelector }) {
     type: 'EXTRACT_ARTICLE',
     payload: {
       url,
-      forceRefresh,
-      manualSelector,
+      forceRefresh: false,
+      manualSelector: '',
       followTabs
     }
   });
@@ -224,19 +151,16 @@ async function runExtraction({ forceRefresh, useManualSelector }) {
   const statusText = response.data.cached
     ? '提取完成（缓存命中）'
     : `提取完成（字数 ${response.data.wordCount} / 图片 ${response.data.imageCount}）`;
-
   setExtractStatus(statusText, response.data.validation?.ok ? 'success' : 'warn');
 
   await refreshLogs();
 }
 
 function applyArticle(article) {
+  const normalizedHtml = normalizePreviewHtml(article.contentHtml || '');
+
   dom.titleInput.value = article.title || '';
-  const normalizedHtml = normalizeEditorHtml(article.contentHtml || '');
-  editor.setContentHtml(normalizedHtml);
-  if (state.article) {
-    state.article.contentHtml = normalizedHtml;
-  }
+  dom.contentPreview.innerHTML = normalizedHtml;
 
   if (article.coverUrl) {
     dom.coverPreview.src = article.coverUrl;
@@ -251,32 +175,34 @@ function applyArticle(article) {
   dom.paragraphCount.textContent = String(article.paragraphCount || 0);
 
   renderValidation(article.validation, article.validationHints || []);
+
+  if (state.article) {
+    state.article.contentHtml = normalizedHtml;
+  }
 }
 
-function normalizeEditorHtml(html) {
+function normalizePreviewHtml(html) {
   const wrapper = document.createElement('div');
-  wrapper.innerHTML = html;
+  wrapper.innerHTML = html || '';
 
-  wrapper
-    .querySelectorAll(
-      'script,style,iframe,link,meta,.qr_code_pc,.wx_profile_card_container,.rich_media_meta_list,[style*=\"display:none\"]'
-    )
-    .forEach((node) => node.remove());
+  wrapper.querySelectorAll('script,style,iframe,link,meta,noscript').forEach((node) => node.remove());
+
+  wrapper.querySelectorAll('*').forEach((node) => {
+    node.removeAttribute('id');
+    node.removeAttribute('class');
+    node.removeAttribute('style');
+    node.removeAttribute('data-id');
+    node.removeAttribute('onclick');
+    node.removeAttribute('onload');
+  });
 
   wrapper.querySelectorAll('img').forEach((img) => {
     img.style.maxWidth = '100%';
     img.style.height = 'auto';
+    img.loading = 'lazy';
   });
 
-  wrapper.querySelectorAll('p,div,section').forEach((node) => {
-    const text = node.textContent?.replace(/\s+/g, ' ').trim() || '';
-    const hasImage = node.querySelector('img');
-    if (!text && !hasImage) {
-      node.remove();
-    }
-  });
-
-  return wrapper.innerHTML.replace(/(<br\s*\/?>\s*){3,}/gi, '<br><br>').trim();
+  return wrapper.innerHTML.trim();
 }
 
 function renderValidation(validation, hints = []) {
@@ -294,8 +220,8 @@ function renderValidation(validation, hints = []) {
     items.push({ level: 'warn', text: item });
   });
 
-  hints.forEach((hint) => {
-    items.push({ level: 'warn', text: hint });
+  hints.forEach((item) => {
+    items.push({ level: 'warn', text: item });
   });
 
   if (items.length === 0) {
@@ -312,11 +238,9 @@ function renderValidation(validation, hints = []) {
 }
 
 async function runPublishing() {
-  const selectedPlatformIds = [...document.querySelectorAll('.platform-checkbox:checked')].map(
-    (node) => node.value
-  );
+  const selectedPlatformIds = [...document.querySelectorAll('.platform-checkbox:checked')].map((node) => node.value);
 
-  if (selectedPlatformIds.length === 0) {
+  if (!selectedPlatformIds.length) {
     throw new Error('请先选择发布平台');
   }
 
@@ -324,17 +248,17 @@ async function runPublishing() {
   const followTabs = Boolean(dom.followTabsInput?.checked);
 
   if (!contentPayload.title) {
-    throw new Error('请先填写标题');
+    throw new Error('标题不能为空');
   }
 
-  if (!contentPayload.contentHtml.trim() && !contentPayload.textPlain.trim()) {
-    throw new Error('正文内容为空，无法发布');
+  if (!contentPayload.contentHtml.trim()) {
+    throw new Error('正文为空，无法发布');
   }
 
   dom.publishButton.disabled = true;
-  dom.publishProgressBar.style.width = '4%';
-  dom.publishProgressText.textContent = '开始同步发布...';
   dom.publishResultList.innerHTML = '';
+  dom.publishProgressBar.style.width = '6%';
+  dom.publishProgressText.textContent = '开始同步发布...';
 
   const response = await runtimeSend({
     type: 'PUBLISH_CONTENT',
@@ -357,40 +281,45 @@ async function runPublishing() {
   dom.publishProgressBar.style.width = '100%';
   dom.publishProgressText.textContent = `完成：成功 ${summary.success}/${summary.total}，失败 ${summary.failed}`;
 
-  await refreshFailedDrafts();
   await refreshLogs();
+  await refreshFailedDrafts();
 }
 
 function collectCurrentContent() {
-  const contentHtml = editor.getContentHtml();
-  const textPlain = editor.getPlainText();
-  const images = editor.getImages();
-  const previewCover = dom.coverPreview.getAttribute('src') || '';
+  const article = state.article || {};
+  const contentHtml = dom.contentPreview.innerHTML.trim();
+  const textPlain = stripHtml(contentHtml);
 
   return {
     title: dom.titleInput.value.trim(),
-    coverUrl: state.article?.coverUrl || previewCover,
+    coverUrl: article.coverUrl || dom.coverPreview.getAttribute('src') || '',
     contentHtml,
     textPlain,
-    images
+    images: extractImagesFromHtml(contentHtml)
   };
 }
 
+function extractImagesFromHtml(html) {
+  const wrapper = document.createElement('div');
+  wrapper.innerHTML = html || '';
+  return [...wrapper.querySelectorAll('img[src]')]
+    .map((img, index) => ({ index, src: img.getAttribute('src') || '' }))
+    .filter((item) => item.src);
+}
+
 function applyPublishProgress(payload) {
-  if (!payload) {
-    return;
-  }
+  if (!payload) return;
 
   const total = payload.total || 1;
   const current = payload.current || 0;
   const ratio = Math.min(100, Math.max(0, Math.round((current / total) * 100)));
 
   if (payload.phase === 'running') {
-    dom.publishProgressBar.style.width = `${Math.max(8, ratio)}%`;
+    dom.publishProgressBar.style.width = `${Math.max(10, ratio)}%`;
   } else if (payload.phase === 'finish') {
     dom.publishProgressBar.style.width = '100%';
   } else {
-    dom.publishProgressBar.style.width = `${Math.max(6, ratio)}%`;
+    dom.publishProgressBar.style.width = `${Math.max(8, ratio)}%`;
   }
 
   dom.publishProgressText.textContent = payload.message || '处理中...';
@@ -412,15 +341,9 @@ function renderPublishResults(results) {
     li.className = `publish-result ${result.status === 'success' ? 'success' : 'failed'}`;
 
     if (result.status === 'success') {
-      li.innerHTML = `
-        <strong>${result.platformName}</strong>
-        <span>自动填充完成（尝试 ${result.attempts} 次）</span>
-      `;
+      li.innerHTML = `<strong>${result.platformName}</strong><span>自动填充完成（尝试 ${result.attempts} 次）</span>`;
     } else {
-      li.innerHTML = `
-        <strong>${result.platformName}</strong>
-        <span>失败：${result.error || '未知错误'}（已保存回退草稿）</span>
-      `;
+      li.innerHTML = `<strong>${result.platformName}</strong><span>失败：${result.error || '未知错误'}（已保存回退草稿）</span>`;
     }
 
     dom.publishResultList.appendChild(li);
@@ -429,11 +352,9 @@ function renderPublishResults(results) {
 
 async function refreshLogs() {
   const response = await runtimeSend({ type: 'GET_LOGS' });
-  if (!response.ok) {
-    return;
-  }
+  if (!response.ok) return;
 
-  state.logs = (response.logs || []).slice(0, 60);
+  state.logs = (response.logs || []).slice(0, 100);
   renderLogs(state.logs);
 }
 
@@ -442,7 +363,6 @@ function renderLogs(logs) {
 
   if (!logs.length) {
     const li = document.createElement('li');
-    li.className = 'log-item';
     li.textContent = '暂无日志';
     dom.logList.appendChild(li);
     return;
@@ -451,19 +371,15 @@ function renderLogs(logs) {
   logs.forEach((log) => {
     const li = document.createElement('li');
     li.className = `log-item level-${log.level}`;
-
     const time = new Date(log.createdAt).toLocaleTimeString('zh-CN', { hour12: false });
     li.textContent = `[${time}] [${log.stage}] ${log.message}`;
-
     dom.logList.appendChild(li);
   });
 }
 
 async function refreshFailedDrafts() {
   const response = await runtimeSend({ type: 'GET_FAILED_DRAFTS' });
-  if (!response.ok) {
-    return;
-  }
+  if (!response.ok) return;
 
   state.failedDrafts = (response.drafts || []).slice(0, 10);
   renderFailedDrafts(state.failedDrafts);
@@ -488,12 +404,12 @@ function renderFailedDrafts(drafts) {
     const createdAt = new Date(draft.createdAt).toLocaleString('zh-CN', { hour12: false });
 
     li.innerHTML = `
-      <div class="draft-info">
+      <div>
         <strong>${platformName}</strong>
         <span>${createdAt}</span>
-        <span class="draft-error">${draft.errorMessage || '未知错误'}</span>
+        <small>${draft.errorMessage || '未知错误'}</small>
       </div>
-      <button class="ghost" data-copy-draft="${draft.id}">复制草稿</button>
+      <button class="secondary outline" type="button" data-copy-draft="${draft.id}">复制草稿</button>
     `;
 
     dom.failedDraftList.appendChild(li);
@@ -507,8 +423,6 @@ function setExtractStatus(message, tone = 'info') {
 
 function setExtractBusy(busy) {
   dom.extractButton.disabled = busy;
-  dom.manualExtractButton.disabled = busy;
-  dom.refreshExtractButton.disabled = busy;
 }
 
 async function runtimeSend(message) {
@@ -522,60 +436,8 @@ async function runtimeSend(message) {
   }
 }
 
-async function compressImage(file, maxWidth = 1920, quality = 0.86) {
-  const dataUrl = await fileToDataUrl(file);
-  const image = await loadImage(dataUrl);
-
-  const ratio = image.width > maxWidth ? maxWidth / image.width : 1;
-  const width = Math.round(image.width * ratio);
-  const height = Math.round(image.height * ratio);
-
-  const canvas = document.createElement('canvas');
-  canvas.width = width;
-  canvas.height = height;
-
-  const context = canvas.getContext('2d');
-  if (!context) {
-    return dataUrl;
-  }
-
-  context.drawImage(image, 0, 0, width, height);
-  return canvas.toDataURL('image/jpeg', quality);
-}
-
-async function fileToDataUrl(file) {
-  return await new Promise((resolve, reject) => {
-    const reader = new FileReader();
-    reader.onload = () => resolve(String(reader.result));
-    reader.onerror = () => reject(new Error('文件读取失败'));
-    reader.readAsDataURL(file);
-  });
-}
-
-async function loadImage(src) {
-  return await new Promise((resolve, reject) => {
-    const image = new Image();
-    image.onload = () => resolve(image);
-    image.onerror = () => reject(new Error('图片加载失败'));
-    image.src = src;
-  });
-}
-
-function createEmptyArticle() {
-  return {
-    title: '',
-    coverUrl: '',
-    contentHtml: '',
-    textPlain: '',
-    wordCount: 0,
-    imageCount: 0,
-    paragraphCount: 0,
-    images: []
-  };
-}
-
 function stripHtml(html) {
-  return html.replace(/<[^>]+>/g, ' ').replace(/\s+/g, ' ').trim();
+  return String(html || '').replace(/<[^>]+>/g, ' ').replace(/\s+/g, ' ').trim();
 }
 
 async function copyText(text) {
