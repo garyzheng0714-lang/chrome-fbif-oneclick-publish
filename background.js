@@ -555,6 +555,7 @@ async function publishXiaohongshuBySteps(tabId, content, platformName) {
       args: [
         {
           title: content.title,
+          contentHtml: content.contentHtml,
           textPlain: content.textPlain,
           coverUrl: content.coverUrl,
           imageCount: content.images?.length ?? 0
@@ -685,7 +686,7 @@ function probeXiaohongshuEditorStep() {
   };
 }
 
-function fillXiaohongshuFieldsStep(payload) {
+async function fillXiaohongshuFieldsStep(payload) {
   const isVisible = (node) => {
     if (!(node instanceof HTMLElement)) {
       return false;
@@ -729,33 +730,60 @@ function fillXiaohongshuFieldsStep(payload) {
     }
   };
 
-  const setEditorText = (editor, text) => {
+  const blobToDataUri = (blob) =>
+    new Promise((resolve, reject) => {
+      const reader = new FileReader();
+      reader.onload = () => resolve(reader.result);
+      reader.onerror = () => reject(new Error('file read failed'));
+      reader.readAsDataURL(blob);
+    });
+
+  const convertImagesToDataUri = async (html, maxCount = 8) => {
+    const wrapper = document.createElement('div');
+    wrapper.innerHTML = html || '';
+
+    const images = [...wrapper.querySelectorAll('img[src]')].slice(0, maxCount);
+    for (const img of images) {
+      const src = img.getAttribute('src') || '';
+      if (!src || src.startsWith('data:')) {
+        continue;
+      }
+
+      try {
+        const response = await fetch(src, { credentials: 'omit' });
+        if (!response.ok) {
+          continue;
+        }
+        const blob = await response.blob();
+        if (!blob || blob.size <= 0 || blob.size > 8 * 1024 * 1024) {
+          continue;
+        }
+        const dataUri = await blobToDataUri(blob);
+        if (typeof dataUri === 'string' && dataUri.startsWith('data:image/')) {
+          img.setAttribute('src', dataUri);
+        }
+      } catch {
+        // keep original src on failure
+      }
+    }
+
+    return wrapper.innerHTML;
+  };
+
+  const setEditorContent = (editor, html, text) => {
     if (!editor) {
       return false;
     }
 
-    const normalized = (text || '').trim();
-    if (!normalized) {
+    const normalizedText = (text || '').trim();
+    const normalizedHtml = (html || '').trim();
+    if (!normalizedText && !normalizedHtml) {
       return false;
     }
 
     try {
       editor.focus();
-      editor.innerHTML = '';
-      const segments = normalized
-        .split(/\n{2,}/)
-        .map((line) => line.trim())
-        .filter(Boolean);
-
-      if (!segments.length) {
-        editor.textContent = normalized;
-      } else {
-        for (const segment of segments) {
-          const p = document.createElement('p');
-          p.textContent = segment;
-          editor.appendChild(p);
-        }
-      }
+      editor.innerHTML = normalizedHtml || normalizedText;
 
       editor.dispatchEvent(new Event('input', { bubbles: true }));
       editor.dispatchEvent(new Event('change', { bubbles: true }));
@@ -763,7 +791,7 @@ function fillXiaohongshuFieldsStep(payload) {
       return true;
     } catch {
       try {
-        editor.textContent = normalized;
+        editor.textContent = normalizedText;
         editor.dispatchEvent(new Event('input', { bubbles: true }));
         return true;
       } catch {
@@ -788,8 +816,13 @@ function fillXiaohongshuFieldsStep(payload) {
     'div[contenteditable="true"]'
   ]);
 
+  const sanitizedWrapper = document.createElement('div');
+  sanitizedWrapper.innerHTML = payload.contentHtml || '';
+  sanitizedWrapper.querySelectorAll('script,style,iframe,link,meta').forEach((node) => node.remove());
+  const safeHtml = await convertImagesToDataUri(sanitizedWrapper.innerHTML, 8);
+
   const titleOk = titleNode ? setNativeValue(titleNode, payload.title || '') : false;
-  const contentOk = editorNode ? setEditorText(editorNode, payload.textPlain || '') : false;
+  const contentOk = editorNode ? setEditorContent(editorNode, safeHtml, payload.textPlain || '') : false;
 
   const warnings = [];
   if (!titleOk) {
@@ -798,13 +831,8 @@ function fillXiaohongshuFieldsStep(payload) {
   if (!contentOk) {
     warnings.push('小红书正文编辑器未匹配');
   }
-  if (payload.coverUrl) {
-    warnings.push('小红书封面需在平台内手动上传');
-  } else {
+  if (!payload.coverUrl) {
     warnings.push('当前内容未包含封面图');
-  }
-  if ((payload.imageCount ?? 0) > 0) {
-    warnings.push('小红书暂不自动搬运微信图片，请在编辑器内手动上传');
   }
 
   return {
@@ -847,8 +875,8 @@ async function autoFillPublishPage(payload) {
         '.ProseMirror'
       ],
       cover: ['input[placeholder*="封面"]', 'input[placeholder*="图片"]', 'input[type="url"]'],
-      preferPlainText: true,
-      stripImages: true
+      preferPlainText: false,
+      stripImages: false
     },
     zhihu: {
       title: [
@@ -865,8 +893,8 @@ async function autoFillPublishPage(payload) {
         '.Editable-content'
       ],
       cover: ['input[placeholder*="封面"]', 'input[placeholder*="图片"]', 'input[type="url"]'],
-      preferPlainText: true,
-      stripImages: true
+      preferPlainText: false,
+      stripImages: false
     },
     toutiao: {
       title: ['input[placeholder*="标题"]', 'input[placeholder*="请输入文章标题"]', '.title-input input'],
@@ -1109,6 +1137,97 @@ async function autoFillPublishPage(payload) {
     return wrapper.innerHTML;
   };
 
+  const mapWithConcurrency = async (items, worker, concurrency = 3) => {
+    const results = new Array(items.length);
+    let cursor = 0;
+
+    const runners = Array.from({ length: Math.max(1, concurrency) }, async () => {
+      while (true) {
+        const index = cursor;
+        cursor += 1;
+        if (index >= items.length) {
+          return;
+        }
+        try {
+          results[index] = await worker(items[index], index);
+        } catch {
+          results[index] = null;
+        }
+      }
+    });
+
+    await Promise.all(runners);
+    return results;
+  };
+
+  const uploadZhihuImageByUrl = async (src) => {
+    const body = new URLSearchParams({
+      url: src,
+      source: 'article'
+    });
+    const response = await fetch('https://zhuanlan.zhihu.com/api/uploaded_images', {
+      method: 'POST',
+      credentials: 'include',
+      headers: {
+        'Content-Type': 'application/x-www-form-urlencoded',
+        'x-requested-with': 'fetch'
+      },
+      body
+    });
+
+    if (!response.ok) {
+      return null;
+    }
+
+    const payload = await response.json().catch(() => ({}));
+    const uploadedUrl = payload?.src;
+    return typeof uploadedUrl === 'string' && uploadedUrl ? uploadedUrl : null;
+  };
+
+  const preprocessZhihuHtml = async (html) => {
+    const wrapper = document.createElement('div');
+    wrapper.innerHTML = html || '';
+
+    const images = [...wrapper.querySelectorAll('img[src]')];
+    const srcList = [...new Set(images.map((img) => img.getAttribute('src')).filter(Boolean))];
+    const externalList = srcList.filter((src) => !/zhimg\.com/i.test(src));
+
+    if (externalList.length > 0) {
+      const uploadedUrls = await mapWithConcurrency(
+        externalList.slice(0, 24),
+        async (src) => ({ src, uploaded: await uploadZhihuImageByUrl(src) }),
+        3
+      );
+      const replaceMap = new Map(
+        (uploadedUrls || [])
+          .filter((item) => item?.src && item?.uploaded)
+          .map((item) => [item.src, item.uploaded])
+      );
+
+      images.forEach((img) => {
+        const src = img.getAttribute('src') || '';
+        if (!src) {
+          return;
+        }
+        const uploaded = replaceMap.get(src);
+        if (uploaded) {
+          img.setAttribute('src', uploaded);
+        }
+      });
+    }
+
+    wrapper.querySelectorAll('img').forEach((img) => {
+      const parentTag = img.parentElement?.tagName?.toLowerCase();
+      if (parentTag !== 'figure') {
+        const figure = document.createElement('figure');
+        img.replaceWith(figure);
+        figure.appendChild(img);
+      }
+    });
+
+    return wrapper.innerHTML;
+  };
+
   const htmlFromPlainText = (text) =>
     (text || '')
       .split(/\n{2,}/)
@@ -1289,7 +1408,7 @@ async function autoFillPublishPage(payload) {
     const titleNode = await waitForSelector(xiaohongshuTitleSelectors, timeoutMs);
     const editorNode = await waitForSelector(xiaohongshuEditorSelectors, timeoutMs);
 
-    const cleanedHtml = sanitizeHtmlForEditor(contentHtml || '', { stripImages: true });
+    const cleanedHtml = sanitizeHtmlForEditor(contentHtml || '', { stripImages: false });
     const plainText = textPlain || toPlainText(cleanedHtml);
     const finalText = plainText || toPlainText(cleanedHtml);
 
@@ -1320,10 +1439,6 @@ async function autoFillPublishPage(payload) {
     if (!contentOk) {
       warnings.push('小红书正文编辑器未匹配');
     }
-    if ((images?.length ?? 0) > 0) {
-      warnings.push('小红书暂不自动搬运微信图片，请在编辑器内手动上传');
-    }
-
     return {
       ok: titleOk && contentOk,
       titleOk,
@@ -1361,7 +1476,10 @@ async function autoFillPublishPage(payload) {
       });
     }
 
-    const cleanedHtml = sanitizeHtmlForEditor(payload.contentHtml || '', { stripImages: profile.stripImages });
+    let cleanedHtml = sanitizeHtmlForEditor(payload.contentHtml || '', { stripImages: profile.stripImages });
+    if (payload.platformId === 'zhihu') {
+      cleanedHtml = await preprocessZhihuHtml(cleanedHtml);
+    }
     const plainText = payload.textPlain || toPlainText(cleanedHtml);
     const finalText = profile.preferPlainText ? toPlainText(cleanedHtml) : plainText;
 
