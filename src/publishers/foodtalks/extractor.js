@@ -1,6 +1,6 @@
 export function extractFoodtalksContent(content = {}) {
   const sourceUrl = typeof content?.sourceUrl === 'string' ? content.sourceUrl.trim() : '';
-  const isFeishuSource = /^https?:\/\/([a-z0-9-]+\.)?feishu\.cn\/docx\//i.test(sourceUrl);
+  const isFeishuSource = /^https?:\/\/([a-z0-9-]+\.)?(feishu\.cn|larkoffice\.com)\/(?:docx|wiki)\//i.test(sourceUrl);
 
   return {
     ...content,

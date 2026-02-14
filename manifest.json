@@ -26,7 +26,8 @@
     "type": "module"
   },
   "action": {
-    "default_title": "打开内容分发中心"
+    "default_title": "飞书提取并复制",
+    "default_popup": "popup.html"
   },
   "web_accessible_resources": [
     {

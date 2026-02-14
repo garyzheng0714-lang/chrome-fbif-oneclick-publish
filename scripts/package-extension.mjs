@@ -12,7 +12,7 @@ const zipPath = path.join(distDir, 'fbif-oneclick-publish.zip');
 const crxPath = path.join(distDir, 'fbif-oneclick-publish.crx');
 const keyPath = path.join(rootDir, '.keys', 'fbif-oneclick-publish.pem');
 
-const extensionFiles = ['manifest.json', 'background.js', 'app.html', 'fallback.html', 'styles', 'src'];
+const extensionFiles = ['manifest.json', 'background.js', 'app.html', 'popup.html', 'fallback.html', 'styles', 'src'];
 
 await fs.ensureDir(path.dirname(keyPath));
 await fs.emptyDir(distDir);

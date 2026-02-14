@@ -1,4 +1,5 @@
 import { createFeishuClient } from './client.js';
+import { applyHeadingSequenceRule } from './rules/index.js';
 
 const TEXT_BLOCK_TYPE_TO_TAG = {
   2: 'p',
@@ -324,7 +325,7 @@ function isLikelyImageCaptionBlock(block) {
   return align === 'center' && text.length <= 42;
 }
 
-function renderCaptionFromBlock(block, context) {
+function renderCaptionLineFromBlock(block, context) {
   const elements = getRichTextElements(block);
   const text = normalizeText(extractPlainTextFromElements(elements));
   if (text) {
@@ -333,18 +334,59 @@ function renderCaptionFromBlock(block, context) {
   }
 
   const html = renderRichText(elements).trim();
-  if (!html) {
-    return { text, html: '' };
-  }
+  const align = getBlockTextAlign(block);
 
-  const alignAttr = buildTextAlignAttr(getBlockTextAlign(block));
   return {
     text,
-    html: `<figcaption${alignAttr}>${html}</figcaption>`
+    html,
+    align
   };
 }
 
-function renderImageBlock(block, context, { captionBlock = null } = {}) {
+function renderCaptionFromBlocks(blocks, context) {
+  const safeBlocks = Array.isArray(blocks) ? blocks.filter(Boolean) : [];
+  if (!safeBlocks.length) {
+    return { text: '', html: '' };
+  }
+
+  const lines = safeBlocks
+    .map((block) => renderCaptionLineFromBlock(block, context))
+    .filter((item) => item.text || item.html);
+
+  if (!lines.length) {
+    return { text: '', html: '' };
+  }
+
+  const text = lines.map((item) => item.text).filter(Boolean).join('\n');
+  const rootAlignAttr = buildTextAlignAttr(lines[0]?.align);
+
+  if (lines.length === 1) {
+    const content = lines[0].html || escapeHtml(lines[0].text || '');
+    return {
+      text,
+      html: `<figcaption${rootAlignAttr}>${content}</figcaption>`
+    };
+  }
+
+  const lineHtml = lines
+    .map((line) => {
+      const content = line.html || escapeHtml(line.text || '');
+      const lineAlignAttr = buildTextAlignAttr(line.align || lines[0]?.align);
+      return `<p${lineAlignAttr}>${content}</p>`;
+    })
+    .join('');
+
+  return {
+    text,
+    html: `<figcaption${rootAlignAttr}>${lineHtml}</figcaption>`
+  };
+}
+
+function renderCaptionFromBlock(block, context) {
+  return renderCaptionFromBlocks(block ? [block] : [], context);
+}
+
+function renderImageBlock(block, context, { captionBlock = null, captionBlocks = null } = {}) {
   const token = normalizeText(block?.image?.token);
   if (!token) {
     return '';
@@ -359,7 +401,14 @@ function renderImageBlock(block, context, { captionBlock = null } = {}) {
     caption: ''
   };
 
-  const caption = captionBlock ? renderCaptionFromBlock(captionBlock, context) : { text: '', html: '' };
+  const resolvedCaptionBlocks =
+    Array.isArray(captionBlocks) && captionBlocks.length > 0
+      ? captionBlocks
+      : captionBlock
+      ? [captionBlock]
+      : [];
+  const caption =
+    resolvedCaptionBlocks.length > 0 ? renderCaptionFromBlocks(resolvedCaptionBlocks, context) : { text: '', html: '' };
   if (caption.text) {
     image.caption = caption.text;
   }
@@ -547,12 +596,20 @@ function renderUnknownBlock(block, blocksMap, context, ancestry) {
 
 function renderTextBlock(block, context) {
   const elements = getRichTextElements(block);
-  collectTextContent(context, extractPlainTextFromElements(elements));
-
-  const html = renderRichText(elements).trim();
+  const plainText = extractPlainTextFromElements(elements);
+  let html = renderRichText(elements).trim();
   if (!html) {
     return '';
   }
+
+  const headingResult = applyHeadingSequenceRule({
+    blockType: block?.block_type,
+    plainText,
+    renderedHtml: html,
+    context
+  });
+  html = headingResult.html;
+  collectTextContent(context, headingResult.plainText);
 
   context.paragraphCount += 1;
   const tag = TEXT_BLOCK_TYPE_TO_TAG[Number(block?.block_type)] || 'p';
@@ -646,8 +703,16 @@ function renderGridBlock(block, blocksMap, context, ancestry) {
     return '';
   }
 
+  const ratios = children
+    .map((childId) => Number(blocksMap.get(normalizeText(childId))?.grid_column?.width_ratio || 0))
+    .map((ratio) => (Number.isFinite(ratio) && ratio > 0 ? ratio : 0));
+  const hasRatioLayout = ratios.length === columnsHtml.length && ratios.some((ratio) => ratio > 0);
+  const templateColumns = hasRatioLayout
+    ? ratios.map((ratio) => `${Math.max(1, ratio)}fr`).join(' ')
+    : `repeat(${columnSize},minmax(0,1fr))`;
+
   context.paragraphCount += 1;
-  return `<div class="feishu-grid" style="grid-template-columns:repeat(${columnSize},minmax(0,1fr));">${columnsHtml.join(
+  return `<div class="feishu-grid" style="grid-template-columns:${templateColumns};">${columnsHtml.join(
     '\n'
   )}</div>`;
 }
@@ -748,25 +813,48 @@ function renderTableBlock(block, blocksMap, context, ancestry) {
 
   context.paragraphCount += Math.max(1, rowsHtml.length);
 
-  const columnWidth = Array.isArray(property?.column_width) ? property.column_width : [];
-  const tablePixelWidth =
-    columnWidth.length > 0
-      ? columnWidth
-          .slice(0, columnSize)
-          .reduce((sum, width) => sum + Math.max(40, Number(width) || 0), 0)
-      : 0;
-  const colgroup =
-    columnWidth.length > 0
-      ? `<colgroup>${columnWidth
-          .slice(0, columnSize)
-          .map((width) => `<col style="width:${Math.max(40, Number(width) || 0)}px;" />`)
-          .join('')}</colgroup>`
-      : '';
+  const rawColumnWidth = Array.isArray(property?.column_width) ? property.column_width : [];
+  const normalizedColumnRatios = normalizeTableColumnRatios(rawColumnWidth, columnSize);
+  const colgroup = `<colgroup>${normalizedColumnRatios
+    .map((ratio) => `<col style="width:${ratio}%;" />`)
+    .join('')}</colgroup>`;
 
-  const tableStyle = tablePixelWidth > 0 ? ` style="min-width:${tablePixelWidth}px;width:${tablePixelWidth}px;"` : '';
-  return `<div class="feishu-table-wrap"><table class="feishu-table"${tableStyle}>${colgroup}<tbody>${rowsHtml.join(
+  return `<div class="feishu-table-wrap"><table class="feishu-table" style="width:100%;table-layout:fixed;">${colgroup}<tbody>${rowsHtml.join(
     ''
   )}</tbody></table></div>`;
+}
+
+function normalizeTableColumnRatios(rawWidths, columnSize) {
+  const safeColumnSize = Math.max(1, Number(columnSize) || 1);
+  const widths = Array.from({ length: safeColumnSize }, (_, index) => Number(rawWidths?.[index]) || 0);
+  const positive = widths.filter((value) => value > 0);
+
+  if (!positive.length) {
+    const equal = Number((100 / safeColumnSize).toFixed(4));
+    return new Array(safeColumnSize).fill(equal);
+  }
+
+  const max = Math.max(...positive);
+  const scale = max > 2000 ? 20 : 1;
+  const normalized = widths.map((value) => {
+    if (value <= 0) {
+      return 0;
+    }
+    const scaled = value / scale;
+    return Math.min(520, Math.max(48, scaled));
+  });
+
+  const valid = normalized.filter((value) => value > 0);
+  const fallback = valid.length ? valid.reduce((sum, value) => sum + value, 0) / valid.length : 120;
+  const filled = normalized.map((value) => (value > 0 ? value : fallback));
+  const total = filled.reduce((sum, value) => sum + value, 0);
+
+  if (!(total > 0)) {
+    const equal = Number((100 / safeColumnSize).toFixed(4));
+    return new Array(safeColumnSize).fill(equal);
+  }
+
+  return filled.map((value) => Number(((value / total) * 100).toFixed(4)));
 }
 
 function renderChildren(childIds, blocksMap, context, ancestry = new Set()) {
@@ -813,17 +901,30 @@ function renderChildren(childIds, blocksMap, context, ancestry = new Set()) {
     }
 
     if (childType === IMAGE_BLOCK_TYPE) {
-      let captionBlock = null;
-      const nextId = normalizeText(childIds[index + 1]);
-      if (nextId) {
-        const nextBlock = blocksMap.get(nextId);
-        if (isLikelyImageCaptionBlock(nextBlock)) {
-          captionBlock = nextBlock;
-          index += 1;
+      const captionBlocks = [];
+      let cursor = index + 1;
+
+      while (cursor < childIds.length && captionBlocks.length < 3) {
+        const nextId = normalizeText(childIds[cursor]);
+        if (!nextId) {
+          break;
         }
+        const nextBlock = blocksMap.get(nextId);
+        if (!isLikelyImageCaptionBlock(nextBlock)) {
+          break;
+        }
+        captionBlocks.push(nextBlock);
+        cursor += 1;
       }
 
-      const imageHtml = renderImageBlock(childBlock, context, { captionBlock });
+      if (captionBlocks.length > 0) {
+        index = cursor - 1;
+      }
+
+      const imageHtml = renderImageBlock(childBlock, context, {
+        captionBlock: captionBlocks[0] || null,
+        captionBlocks
+      });
       if (imageHtml) {
         chunks.push(imageHtml);
       }
@@ -901,19 +1002,49 @@ function renderBlock(blockId, blocksMap, context, ancestry = new Set()) {
   return selfHtml;
 }
 
-export function isFeishuDocUrl(url) {
-  return /^https?:\/\/([a-z0-9-]+\.)?feishu\.cn\/docx\/[a-z0-9]+/i.test(String(url || '').trim());
+function isSupportedFeishuHost(hostname) {
+  return /^([a-z0-9-]+\.)?(feishu\.cn|larkoffice\.com)$/i.test(String(hostname || '').trim());
 }
 
 export function parseFeishuDocToken(url) {
   const normalized = String(url || '').trim();
-  const match = normalized.match(/\/docx\/([a-z0-9]+)/i);
-  return match?.[1] || '';
+  if (!normalized) {
+    return '';
+  }
+
+  try {
+    const parsed = new URL(normalized);
+    const match = parsed.pathname.match(/^\/(?:docx|wiki)\/([a-z0-9]+)/i);
+    return match?.[1] || '';
+  } catch {
+    const match = normalized.match(/\/(?:docx|wiki)\/([a-z0-9]+)/i);
+    return match?.[1] || '';
+  }
+}
+
+export function isFeishuDocUrl(url) {
+  const normalized = String(url || '').trim();
+  if (!normalized) {
+    return false;
+  }
+
+  try {
+    const parsed = new URL(normalized);
+    if (!/^https?:$/i.test(parsed.protocol)) {
+      return false;
+    }
+    if (!isSupportedFeishuHost(parsed.hostname)) {
+      return false;
+    }
+    return Boolean(parseFeishuDocToken(normalized));
+  } catch {
+    return false;
+  }
 }
 
 export async function extractFeishuDocByApi({ url, appId, appSecret, fetchImpl = fetch }) {
   if (!isFeishuDocUrl(url)) {
-    throw new Error('不是有效的飞书 docx 链接');
+    throw new Error('不是有效的飞书文档链接（支持 /docx/ 或 /wiki/）');
   }
 
   const docToken = parseFeishuDocToken(url);
@@ -940,7 +1071,8 @@ export async function extractFeishuDocByApi({ url, appId, appSecret, fetchImpl =
     images: [],
     textChunks: [],
     paragraphCount: 0,
-    unsupportedBlockTypes: new Set()
+    unsupportedBlockTypes: new Set(),
+    headingCounters: [0, 0, 0, 0, 0, 0]
   };
 
   const contentHtml = renderChildren(rootChildren, blocksMap, context).trim();

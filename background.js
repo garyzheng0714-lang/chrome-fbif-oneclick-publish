@@ -23,8 +23,12 @@ const MAX_CACHE_ITEMS = 20;
 const MAX_LOG_ITEMS = 400;
 const MAX_FAILED_DRAFTS = 50;
 const MAX_FEISHU_IMAGE_CACHE_ITEMS = 80;
+const FEISHU_IMAGE_FETCH_RETRY_LIMIT = 8;
+const FEISHU_IMAGE_FETCH_RETRY_BASE_DELAY_MS = 900;
 const CONTENT_TRANSFER_TTL_MS = 10 * 60 * 1000;
 const MAX_CONTENT_TRANSFERS = 8;
+const DEFAULT_FEISHU_APP_ID = 'cli_a9f7f8703778dcee';
+const DEFAULT_FEISHU_APP_SECRET = 'iqMX8dolH5aObUzgM18MQbtWvtfwKymM';
 
 const feishuImageDataUrlCache = new Map();
 const contentTransferStore = new Map();
@@ -40,12 +44,8 @@ const PLATFORMS = Object.fromEntries(
   ])
 );
 
-chrome.action.onClicked.addListener(async () => {
-  await chrome.tabs.create({ url: APP_PAGE_URL });
-});
-
 chrome.runtime.onInstalled.addListener(() => {
-  appendLog('info', 'system', '扩展已安装，可通过工具栏图标打开分发页面').catch(() => undefined);
+  appendLog('info', 'system', '扩展已安装，可通过工具栏弹窗快速提取飞书内容').catch(() => undefined);
 });
 
 chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
@@ -239,7 +239,7 @@ async function extractArticle({
 
   const normalizedUrl = url.trim();
   if (!isSupportedSourceUrl(normalizedUrl)) {
-    throw new Error('链接格式无效，仅支持 mp.weixin.qq.com 或 *.feishu.cn/docx 链接');
+    throw new Error('链接格式无效，仅支持 mp.weixin.qq.com 或飞书文档（*.feishu.cn/docx|wiki、*.larkoffice.com/docx|wiki）');
   }
 
   if (!forceRefresh) {
@@ -319,6 +319,9 @@ async function extractFeishuWithFallback({ url, manualSelector, sourceSettings, 
         appSecret: credentials.appSecret
       });
     } catch (error) {
+      if (isFeishuPermissionDeniedError(error)) {
+        throw new Error('读取失败：请先在该飞书文档中添加应用（机器人）并授予文档访问权限，然后重试提取');
+      }
       await appendLog('warn', 'extract', '飞书 OpenAPI 提取失败，切换页面兜底', {
         url,
         error: error instanceof Error ? error.message : String(error)
@@ -337,6 +340,16 @@ async function extractFeishuWithFallback({ url, manualSelector, sourceSettings, 
   }
 
   return fallback;
+}
+
+function isFeishuPermissionDeniedError(error) {
+  const message = String(error instanceof Error ? error.message : error || '').toLowerCase();
+  if (!message) {
+    return false;
+  }
+
+  return /(forbidden|no permission|permission denied|权限|无权限|未授权|access denied|not authorized)/i.test(message) ||
+    /(code=177003|code=91403|code=99991663|code=99991661)/i.test(message);
 }
 
 async function extractByTabInjection(url, manualSelector, { followTabs, sourceTabId }) {
@@ -1981,8 +1994,8 @@ function normalizeSourceSettingsPayload(payload = {}) {
     typeof payload?.feishuAppSecret === 'string' ? payload.feishuAppSecret.trim() : '';
 
   return {
-    feishuAppId,
-    feishuAppSecret
+    feishuAppId: feishuAppId || DEFAULT_FEISHU_APP_ID,
+    feishuAppSecret: feishuAppSecret || DEFAULT_FEISHU_APP_SECRET
   };
 }
 
@@ -2035,11 +2048,29 @@ async function fetchFeishuImageDataUrl({ mediaToken, sourceSettings = null }) {
     throw new Error('缺少飞书 App 凭据，请先在插件页面保存 App ID 与 App Secret');
   }
 
-  const imageData = await downloadFeishuImageAsDataUrl({
-    mediaToken: token,
-    appId: credentials.appId,
-    appSecret: credentials.appSecret
-  });
+  let imageData = null;
+  let lastError = null;
+  const maxAttempts = FEISHU_IMAGE_FETCH_RETRY_LIMIT;
+  for (let attempt = 1; attempt <= maxAttempts; attempt += 1) {
+    try {
+      imageData = await downloadFeishuImageAsDataUrl({
+        mediaToken: token,
+        appId: credentials.appId,
+        appSecret: credentials.appSecret
+      });
+      break;
+    } catch (error) {
+      lastError = error;
+      if (attempt >= maxAttempts || isNonRetryableFeishuImageError(error)) {
+        break;
+      }
+      await delay(FEISHU_IMAGE_FETCH_RETRY_BASE_DELAY_MS * attempt);
+    }
+  }
+
+  if (!imageData) {
+    throw lastError instanceof Error ? lastError : new Error('飞书图片下载失败');
+  }
 
   feishuImageDataUrlCache.set(token, imageData);
 
@@ -2051,6 +2082,17 @@ async function fetchFeishuImageDataUrl({ mediaToken, sourceSettings = null }) {
   }
 
   return imageData;
+}
+
+function isNonRetryableFeishuImageError(error) {
+  const message = String(error instanceof Error ? error.message : error || '').toLowerCase();
+  if (!message) {
+    return false;
+  }
+
+  return /(缺少飞书 app 凭据|缺少飞书图片 token|permission|forbidden|unauthorized|无权限|未授权|401|403|177003|91403|99991663)/i.test(
+    message
+  );
 }
 
 async function cacheKey(url) {

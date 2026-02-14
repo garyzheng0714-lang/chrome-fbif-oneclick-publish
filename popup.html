@@ -1,0 +1,45 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>飞书提取并复制</title>
+    <link rel="stylesheet" href="styles/popup.css" />
+  </head>
+  <body class="popup-page">
+    <main class="popup-card">
+      <header>
+        <h1>飞书提取并复制</h1>
+        <p>自动读取当前页面链接，先提取，再手动点击复制代码</p>
+      </header>
+
+      <label class="field-label" for="urlInput">飞书文档链接</label>
+      <input id="urlInput" class="field-input" type="url" placeholder="https://*.feishu.cn/docx/... 或 https://*.larkoffice.com/wiki/..." />
+
+      <details class="advanced">
+        <summary>飞书应用凭据（默认已填充）</summary>
+        <label class="field-label" for="feishuAppIdInput">App ID</label>
+        <input id="feishuAppIdInput" class="field-input" type="text" autocomplete="off" />
+        <label class="field-label" for="feishuAppSecretInput">App Secret</label>
+        <input id="feishuAppSecretInput" class="field-input" type="password" autocomplete="off" />
+      </details>
+
+      <div class="actions">
+        <button id="extractButton" class="btn-primary" type="button">提取内容</button>
+        <button id="copyButton" class="btn-secondary" type="button" disabled>复制代码</button>
+      </div>
+
+      <p class="backend-link">
+        FoodTalks后台地址：
+        <a href="https://admin-we.foodtalks.cn/#/radar/news/publish" target="_blank" rel="noopener noreferrer">
+          https://admin-we.foodtalks.cn/#/radar/news/publish
+        </a>
+      </p>
+
+      <p id="statusText" class="status" data-tone="info">等待操作</p>
+      <p id="metaText" class="meta">-</p>
+    </main>
+
+    <script type="module" src="src/popup.js"></script>
+  </body>
+</html>

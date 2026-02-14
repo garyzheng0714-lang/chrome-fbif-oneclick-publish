@@ -114,6 +114,7 @@ async function requestTenantAccessToken(fetchImpl, appId, appSecret) {
 export function createFeishuClient({ appId, appSecret, fetchImpl = fetch }) {
   const safeAppId = normalizeText(appId);
   const safeAppSecret = normalizeText(appSecret);
+  const tenantCacheKey = buildTenantCacheKey(safeAppId, safeAppSecret);
 
   if (!safeAppId || !safeAppSecret) {
     throw new Error('缺少飞书 App ID 或 App Secret');
@@ -134,12 +135,23 @@ export function createFeishuClient({ appId, appSecret, fetchImpl = fetch }) {
   }
 
   async function requestBinary(pathWithQuery) {
-    const token = await requestTenantAccessToken(fetchImpl, safeAppId, safeAppSecret);
-    const response = await fetchImpl(`${FEISHU_API_BASE}${pathWithQuery}`, {
-      headers: {
-        Authorization: `Bearer ${token}`
+    const issueBinaryRequest = async ({ forceRefreshToken = false } = {}) => {
+      if (forceRefreshToken) {
+        tenantTokenCache.delete(tenantCacheKey);
       }
-    });
+
+      const token = await requestTenantAccessToken(fetchImpl, safeAppId, safeAppSecret);
+      return fetchImpl(`${FEISHU_API_BASE}${pathWithQuery}`, {
+        headers: {
+          Authorization: `Bearer ${token}`
+        }
+      });
+    };
+
+    let response = await issueBinaryRequest();
+    if (response.status === 401 || response.status === 403) {
+      response = await issueBinaryRequest({ forceRefreshToken: true });
+    }
 
     if (!response.ok) {
       const message = await response.text().catch(() => '');

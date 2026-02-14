@@ -330,7 +330,7 @@ function setFeishuConfigStatus(message, tone = 'info') {
 async function runExtraction() {
   const url = dom.urlInput.value.trim();
   const followTabs = Boolean(dom.followTabsInput?.checked);
-  const isFeishuDoc = /^https?:\/\/([a-z0-9-]+\.)?feishu\.cn\/docx\//i.test(url);
+  const isFeishuDoc = /^https?:\/\/([a-z0-9-]+\.)?(feishu\.cn|larkoffice\.com)\/(?:docx|wiki)\//i.test(url);
   const sourceSettings = collectSourceSettings();
 
   if (!url) {
@@ -338,7 +338,7 @@ async function runExtraction() {
   }
 
   if (!isFeishuDoc) {
-    throw new Error('当前版本仅支持飞书云文档链接');
+    throw new Error('当前版本仅支持飞书文档链接（/docx/ 或 /wiki/）');
   }
 
   setExtractBusy(true);
