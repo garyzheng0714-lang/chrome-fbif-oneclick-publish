@@ -2,7 +2,7 @@
   "manifest_version": 3,
   "name": "FBIF OneClick Publish",
   "version": "1.0.0",
-  "description": "微信公众号内容提取、编辑与多平台分发 Chrome 扩展",
+  "description": "微信公众号内容提取并同步到 FoodTalks 后台的 Chrome 扩展",
   "permissions": [
     "tabs",
     "windows",
@@ -14,12 +14,9 @@
   ],
   "host_permissions": [
     "https://mp.weixin.qq.com/*",
-    "https://creator.xiaohongshu.com/*",
-    "https://zhuanlan.zhihu.com/*",
-    "https://*.zhihu.com/*",
-    "https://mp.toutiao.com/*",
-    "https://baijiahao.baidu.com/*",
-    "https://member.bilibili.com/*",
+    "https://*.feishu.cn/*",
+    "https://admin-we.foodtalks.cn/*",
+    "https://*.foodtalks.cn/*",
     "https://mmbiz.qpic.cn/*",
     "https://*.qpic.cn/*",
     "https://res.wx.qq.com/*"

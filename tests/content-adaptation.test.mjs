@@ -3,9 +3,9 @@ import assert from 'node:assert/strict';
 import { JSDOM } from 'jsdom';
 import { PLATFORM_DEFINITIONS } from '../src/platforms.js';
 
-test('platform definitions include required channels', () => {
+test('platform definitions include foodtalks only', () => {
   const ids = PLATFORM_DEFINITIONS.map((item) => item.id);
-  assert.deepEqual(ids.sort(), ['baijiahao', 'bilibili', 'toutiao', 'xiaohongshu', 'zhihu']);
+  assert.deepEqual(ids, ['foodtalks']);
 });
 
 test('extract images in DOM order and preserve src', () => {

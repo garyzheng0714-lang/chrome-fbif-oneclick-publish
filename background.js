@@ -1,4 +1,9 @@
 import { PLATFORM_ADAPTER_MAP } from './src/publishers/index.js';
+import {
+  downloadFeishuImageAsDataUrl,
+  extractFeishuDocByApi,
+  isFeishuDocUrl
+} from './src/sources/feishu/extractor.js';
 
 const APP_PAGE_URL = chrome.runtime.getURL('app.html');
 const FALLBACK_PAGE_URL = chrome.runtime.getURL('fallback.html');
@@ -6,15 +11,23 @@ const FALLBACK_PAGE_URL = chrome.runtime.getURL('fallback.html');
 const LOG_KEY = 'fbif_logs_v1';
 const CACHE_KEY = 'fbif_cache_v1';
 const FAILED_DRAFT_KEY = 'fbif_failed_drafts_v1';
+const SOURCE_SETTINGS_KEY = 'fbif_source_settings_v1';
 
 const EXTRACTION_TIMEOUT_MS = 45_000;
 const TAB_LOAD_TIMEOUT_MS = 35_000;
 const EXTRACTION_RETRY_LIMIT = 2;
 const PUBLISH_RETRY_LIMIT = 2;
+const LOGIN_WAIT_TIMEOUT_MS = 180_000;
 const CACHE_TTL_MS = 6 * 60 * 60 * 1000;
 const MAX_CACHE_ITEMS = 20;
 const MAX_LOG_ITEMS = 400;
 const MAX_FAILED_DRAFTS = 50;
+const MAX_FEISHU_IMAGE_CACHE_ITEMS = 80;
+const CONTENT_TRANSFER_TTL_MS = 10 * 60 * 1000;
+const MAX_CONTENT_TRANSFERS = 8;
+
+const feishuImageDataUrlCache = new Map();
+const contentTransferStore = new Map();
 
 const PLATFORMS = Object.fromEntries(
   Object.values(PLATFORM_ADAPTER_MAP).map((adapter) => [
@@ -64,6 +77,17 @@ async function handleRuntimeMessage(message, sender) {
         sourceTabId: sender?.tab?.id ?? null
       });
     }
+    case 'BEGIN_CONTENT_TRANSFER': {
+      const transfer = beginContentTransfer(message?.payload || {});
+      return transfer;
+    }
+    case 'APPEND_CONTENT_CHUNK': {
+      return appendContentChunk(message?.payload || {});
+    }
+    case 'CLEAR_CONTENT_TRANSFER': {
+      clearContentTransfer(message?.payload?.transferId);
+      return { cleared: true };
+    }
     case 'GET_LOGS': {
       const logs = await readLogs();
       return { logs };
@@ -75,8 +99,129 @@ async function handleRuntimeMessage(message, sender) {
     case 'GET_FAILED_DRAFTS': {
       return { drafts: await readFailedDrafts() };
     }
+    case 'GET_SOURCE_SETTINGS': {
+      return { settings: await getSourceSettings() };
+    }
+    case 'SAVE_SOURCE_SETTINGS': {
+      const settings = await saveSourceSettings(message?.payload || {});
+      return { settings };
+    }
+    case 'FETCH_FEISHU_IMAGE': {
+      const data = await fetchFeishuImageDataUrl(message?.payload || {});
+      return data;
+    }
     default:
       throw new Error('不支持的消息类型');
+  }
+}
+
+function cleanupExpiredContentTransfers() {
+  const now = Date.now();
+  for (const [transferId, transfer] of contentTransferStore.entries()) {
+    if (!transfer || now - transfer.createdAt > CONTENT_TRANSFER_TTL_MS) {
+      contentTransferStore.delete(transferId);
+    }
+  }
+}
+
+function beginContentTransfer(payload = {}) {
+  cleanupExpiredContentTransfers();
+
+  const transferId = String(payload.transferId || '').trim();
+  const totalChunks = Math.max(1, Number(payload.totalChunks) || 0);
+  const contentSize = Math.max(0, Number(payload.contentSize) || 0);
+  if (!transferId) {
+    throw new Error('transferId 缺失');
+  }
+  if (!Number.isFinite(totalChunks) || totalChunks < 1) {
+    throw new Error('内容分片数量无效');
+  }
+
+  if (!contentTransferStore.has(transferId) && contentTransferStore.size >= MAX_CONTENT_TRANSFERS) {
+    const firstKey = contentTransferStore.keys().next().value;
+    if (firstKey) {
+      contentTransferStore.delete(firstKey);
+    }
+  }
+
+  contentTransferStore.set(transferId, {
+    createdAt: Date.now(),
+    updatedAt: Date.now(),
+    totalChunks,
+    contentSize,
+    chunks: new Array(totalChunks).fill(null),
+    receivedCount: 0
+  });
+
+  return { transferId, totalChunks };
+}
+
+function appendContentChunk(payload = {}) {
+  cleanupExpiredContentTransfers();
+
+  const transferId = String(payload.transferId || '').trim();
+  const chunkIndex = Number(payload.index);
+  const chunk = typeof payload.chunk === 'string' ? payload.chunk : '';
+
+  const transfer = contentTransferStore.get(transferId);
+  if (!transfer) {
+    throw new Error('内容传输会话不存在或已过期');
+  }
+
+  if (!Number.isInteger(chunkIndex) || chunkIndex < 0 || chunkIndex >= transfer.totalChunks) {
+    throw new Error('分片序号无效');
+  }
+
+  if (!chunk.length) {
+    throw new Error('分片内容为空');
+  }
+
+  if (!transfer.chunks[chunkIndex]) {
+    transfer.receivedCount += 1;
+  }
+
+  transfer.chunks[chunkIndex] = chunk;
+  transfer.updatedAt = Date.now();
+  contentTransferStore.set(transferId, transfer);
+
+  return {
+    transferId,
+    index: chunkIndex,
+    receivedCount: transfer.receivedCount,
+    totalChunks: transfer.totalChunks
+  };
+}
+
+function clearContentTransfer(transferId) {
+  const normalizedId = String(transferId || '').trim();
+  if (!normalizedId) return;
+  contentTransferStore.delete(normalizedId);
+}
+
+function consumeTransferredContent(transferId) {
+  cleanupExpiredContentTransfers();
+
+  const normalizedId = String(transferId || '').trim();
+  if (!normalizedId) {
+    throw new Error('contentTransferId 缺失');
+  }
+
+  const transfer = contentTransferStore.get(normalizedId);
+  if (!transfer) {
+    throw new Error('大内容传输会话不存在或已过期，请重新同步');
+  }
+
+  if (transfer.receivedCount !== transfer.totalChunks || transfer.chunks.some((chunk) => typeof chunk !== 'string')) {
+    throw new Error('内容分片不完整，请重试同步');
+  }
+
+  const serialized = transfer.chunks.join('');
+  contentTransferStore.delete(normalizedId);
+
+  try {
+    return JSON.parse(serialized);
+  } catch {
+    throw new Error('内容分片解析失败，请重新同步');
   }
 }
 
@@ -84,16 +229,17 @@ async function extractArticle({
   url,
   manualSelector = '',
   forceRefresh = false,
+  sourceSettings = null,
   followTabs = true,
   sourceTabId = null
 }) {
   if (!url || typeof url !== 'string') {
-    throw new Error('请输入公众号文章链接');
+    throw new Error('请输入公众号或飞书文档链接');
   }
 
   const normalizedUrl = url.trim();
-  if (!isWechatArticleUrl(normalizedUrl)) {
-    throw new Error('链接格式无效，仅支持 mp.weixin.qq.com 文章链接');
+  if (!isSupportedSourceUrl(normalizedUrl)) {
+    throw new Error('链接格式无效，仅支持 mp.weixin.qq.com 或 *.feishu.cn/docx 链接');
   }
 
   if (!forceRefresh) {
@@ -108,13 +254,22 @@ async function extractArticle({
 
   for (let attempt = 1; attempt <= EXTRACTION_RETRY_LIMIT; attempt += 1) {
     try {
-      await appendLog('info', 'extract', `开始提取公众号内容（第 ${attempt} 次）`, {
+      await appendLog('info', 'extract', `开始提取内容（第 ${attempt} 次）`, {
         url: normalizedUrl,
         manualSelector
       });
 
+      const sourceType = isFeishuDocUrl(normalizedUrl) ? 'feishu' : 'wechat';
       const rawData = await withTimeout(
-        extractByTabInjection(normalizedUrl, manualSelector, { followTabs, sourceTabId }),
+        sourceType === 'feishu'
+          ? extractFeishuWithFallback({
+              url: normalizedUrl,
+              manualSelector,
+              sourceSettings,
+              followTabs,
+              sourceTabId
+            })
+          : extractByTabInjection(normalizedUrl, manualSelector, { followTabs, sourceTabId }),
         EXTRACTION_TIMEOUT_MS,
         '内容提取超时，请检查网络后重试'
       );
@@ -152,6 +307,38 @@ async function extractArticle({
   throw lastError ?? new Error('提取失败，请稍后重试');
 }
 
+async function extractFeishuWithFallback({ url, manualSelector, sourceSettings, followTabs, sourceTabId }) {
+  const credentials = await resolveFeishuCredentials(sourceSettings);
+
+  if (credentials) {
+    try {
+      await appendLog('info', 'extract', '飞书提取：尝试 OpenAPI', { url });
+      return await extractFeishuDocByApi({
+        url,
+        appId: credentials.appId,
+        appSecret: credentials.appSecret
+      });
+    } catch (error) {
+      await appendLog('warn', 'extract', '飞书 OpenAPI 提取失败，切换页面兜底', {
+        url,
+        error: error instanceof Error ? error.message : String(error)
+      });
+    }
+  } else {
+    await appendLog('warn', 'extract', '未配置飞书 App 凭据，使用页面兜底提取', { url });
+  }
+
+  const fallback = await extractByTabInjection(url, manualSelector, { followTabs, sourceTabId });
+
+  if (credentials) {
+    const hints = Array.isArray(fallback.validationHints) ? fallback.validationHints : [];
+    hints.push('已回退到页面提取模式，建议检查飞书应用权限配置');
+    fallback.validationHints = hints;
+  }
+
+  return fallback;
+}
+
 async function extractByTabInjection(url, manualSelector, { followTabs, sourceTabId }) {
   const tab = await chrome.tabs.create({ url, active: Boolean(followTabs) });
   const tabId = tab.id;
@@ -166,12 +353,14 @@ async function extractByTabInjection(url, manualSelector, { followTabs, sourceTa
     }
 
     await waitForTabComplete(tabId, TAB_LOAD_TIMEOUT_MS);
-    await delay(1200);
+    await delay(isFeishuDocUrl(url) ? 2200 : 1200);
+
+    const extractorFunc = isFeishuDocUrl(url) ? extractFeishuDocInPage : extractWechatArticleInPage;
 
     const executionResult = await chrome.scripting.executeScript({
       target: { tabId },
       world: 'MAIN',
-      func: extractWechatArticleInPage,
+      func: extractorFunc,
       args: [manualSelector]
     });
 
@@ -210,12 +399,12 @@ function evaluateExtractionIntegrity(article) {
     warnings.push('正文字数为 0，可能存在提取异常');
   }
 
-  if (!article?.coverUrl) {
+  if (!article?.coverUrl && !article?.coverToken) {
     warnings.push('未识别到封面图，可手动上传封面');
   }
 
   if (Array.isArray(article?.images)) {
-    const invalidImages = article.images.filter((image) => !image?.src);
+    const invalidImages = article.images.filter((image) => !image?.src && !image?.token);
     if (invalidImages.length > 0) {
       warnings.push(`有 ${invalidImages.length} 张图片链接不完整，建议手动补提`);
     }
@@ -237,7 +426,13 @@ function evaluateExtractionIntegrity(article) {
   };
 }
 
-async function publishContent({ platformIds = [], content = {}, followTabs = true, sourceTabId = null }) {
+async function publishContent({
+  platformIds = [],
+  content = {},
+  contentTransferId = '',
+  followTabs = true,
+  sourceTabId = null
+}) {
   if (!Array.isArray(platformIds) || platformIds.length === 0) {
     throw new Error('请至少选择一个发布平台');
   }
@@ -247,7 +442,8 @@ async function publishContent({ platformIds = [], content = {}, followTabs = tru
     throw new Error('未识别到可用平台');
   }
 
-  const normalizedContent = normalizeContentPayload(content);
+  const rawContent = contentTransferId ? consumeTransferredContent(contentTransferId) : content;
+  const normalizedContent = normalizeContentPayload(rawContent);
 
   if (!normalizedContent.title) {
     throw new Error('发布前请填写文章标题');
@@ -376,6 +572,14 @@ function normalizeContentPayload(content) {
   const title = typeof content?.title === 'string' ? content.title.trim() : '';
   const coverUrl = typeof content?.coverUrl === 'string' ? content.coverUrl.trim() : '';
   const contentHtml = typeof content?.contentHtml === 'string' ? content.contentHtml : '';
+  const sourceUrl = typeof content?.sourceUrl === 'string' ? content.sourceUrl.trim() : '';
+  const publishAction =
+    content?.publishAction === 'publish'
+      ? 'publish'
+      : content?.publishAction === 'none'
+      ? 'none'
+      : 'draft';
+  const preferImporter = content?.preferImporter !== false;
 
   let textPlain = typeof content?.textPlain === 'string' ? content.textPlain.trim() : '';
   if (!textPlain && contentHtml) {
@@ -393,10 +597,13 @@ function normalizeContentPayload(content) {
 
   return {
     title,
+    sourceUrl,
     coverUrl,
     contentHtml,
     textPlain,
-    images
+    images,
+    publishAction,
+    preferImporter
   };
 }
 
@@ -498,6 +705,46 @@ async function publishOnPlatform(platform, content, options = {}) {
     runtime
   });
 
+  if (!adapterResult?.ok && adapterResult?.code === 'LOGIN_REQUIRED' && platform.id === 'foodtalks') {
+    await appendLog('info', 'publish', '检测到 FoodTalks 需要登录，等待用户登录完成', {
+      platformId: platform.id,
+      tabId
+    });
+
+    broadcastProgress({
+      phase: 'running',
+      platformId: platform.id,
+      platformName: platform.name,
+      current: 1,
+      total: 1,
+      message: '请在新标签页完成 FoodTalks 登录，登录后将自动继续填充...'
+    });
+
+    const loginCompleted = await waitForFoodtalksPostLogin(tabId, LOGIN_WAIT_TIMEOUT_MS);
+    if (!loginCompleted) {
+      throw new Error('FoodTalks 登录等待超时，请重新点击同步并在 3 分钟内完成登录');
+    }
+
+    await waitForTabComplete(tabId, TAB_LOAD_TIMEOUT_MS);
+    await delay(1200);
+
+    const retryResult = await adapter.publishApi({
+      tabId,
+      payload: publishPayload,
+      runtime
+    });
+
+    if (!retryResult?.ok) {
+      throw new Error(retryResult?.error || `${platform.name} 登录后自动填充失败`);
+    }
+
+    return {
+      tabId,
+      warnings: retryResult.warnings ?? [],
+      detail: retryResult.detail ?? {}
+    };
+  }
+
   if (!adapterResult?.ok) {
     throw new Error(adapterResult?.error || `${platform.name} 自动填充失败`);
   }
@@ -507,6 +754,25 @@ async function publishOnPlatform(platform, content, options = {}) {
     warnings: adapterResult.warnings ?? [],
     detail: adapterResult.detail ?? {}
   };
+}
+
+async function waitForFoodtalksPostLogin(tabId, timeoutMs = LOGIN_WAIT_TIMEOUT_MS) {
+  const deadline = Date.now() + Math.max(15_000, timeoutMs);
+  while (Date.now() < deadline) {
+    const tab = await chrome.tabs.get(tabId).catch(() => null);
+    if (!tab?.id) {
+      return false;
+    }
+
+    const url = String(tab.url || '');
+    if (url.includes('admin-we.foodtalks.cn') && !url.includes('/#/login')) {
+      return true;
+    }
+
+    await delay(900);
+  }
+
+  return false;
 }
 
 async function publishXiaohongshuBySteps(tabId, content, platformName) {
@@ -1705,6 +1971,88 @@ function isWechatArticleUrl(url) {
   return /^https?:\/\/mp\.weixin\.qq\.com\//i.test(url);
 }
 
+function isSupportedSourceUrl(url) {
+  return isWechatArticleUrl(url) || isFeishuDocUrl(url);
+}
+
+function normalizeSourceSettingsPayload(payload = {}) {
+  const feishuAppId = typeof payload?.feishuAppId === 'string' ? payload.feishuAppId.trim() : '';
+  const feishuAppSecret =
+    typeof payload?.feishuAppSecret === 'string' ? payload.feishuAppSecret.trim() : '';
+
+  return {
+    feishuAppId,
+    feishuAppSecret
+  };
+}
+
+async function getSourceSettings() {
+  const store = await chrome.storage.local.get(SOURCE_SETTINGS_KEY);
+  return normalizeSourceSettingsPayload(store?.[SOURCE_SETTINGS_KEY] || {});
+}
+
+async function saveSourceSettings(payload = {}) {
+  const normalized = normalizeSourceSettingsPayload(payload);
+  await chrome.storage.local.set({
+    [SOURCE_SETTINGS_KEY]: normalized
+  });
+  await appendLog('info', 'extract', '飞书凭据已更新', {
+    hasAppId: Boolean(normalized.feishuAppId),
+    hasAppSecret: Boolean(normalized.feishuAppSecret)
+  });
+  return normalized;
+}
+
+async function resolveFeishuCredentials(overrideSettings = null) {
+  const merged = normalizeSourceSettingsPayload({
+    ...(await getSourceSettings()),
+    ...(overrideSettings || {})
+  });
+
+  if (!merged.feishuAppId || !merged.feishuAppSecret) {
+    return null;
+  }
+
+  return {
+    appId: merged.feishuAppId,
+    appSecret: merged.feishuAppSecret
+  };
+}
+
+async function fetchFeishuImageDataUrl({ mediaToken, sourceSettings = null }) {
+  const token = typeof mediaToken === 'string' ? mediaToken.trim() : '';
+  if (!token) {
+    throw new Error('缺少飞书图片 token');
+  }
+
+  const cached = feishuImageDataUrlCache.get(token);
+  if (cached?.dataUrl) {
+    return { dataUrl: cached.dataUrl, mimeType: cached.mimeType || '' };
+  }
+
+  const credentials = await resolveFeishuCredentials(sourceSettings);
+  if (!credentials) {
+    throw new Error('缺少飞书 App 凭据，请先在插件页面保存 App ID 与 App Secret');
+  }
+
+  const imageData = await downloadFeishuImageAsDataUrl({
+    mediaToken: token,
+    appId: credentials.appId,
+    appSecret: credentials.appSecret
+  });
+
+  feishuImageDataUrlCache.set(token, imageData);
+
+  if (feishuImageDataUrlCache.size > MAX_FEISHU_IMAGE_CACHE_ITEMS) {
+    const oldestKey = feishuImageDataUrlCache.keys().next().value;
+    if (oldestKey) {
+      feishuImageDataUrlCache.delete(oldestKey);
+    }
+  }
+
+  return imageData;
+}
+
 async function cacheKey(url) {
   const digest = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(url));
   return [...new Uint8Array(digest)].map((byte) => byte.toString(16).padStart(2, '0')).join('');
@@ -1974,6 +2322,348 @@ async function extractWechatArticleInPage(manualSelector) {
     if (wordCount === 0) {
       warnings.push('正文字数为 0，可能提取失败');
     }
+
+    return {
+      ok: true,
+      data: {
+        sourceUrl: location.href,
+        title,
+        coverUrl,
+        contentHtml,
+        textPlain,
+        wordCount,
+        paragraphCount,
+        imageCount: images.length,
+        images,
+        validationHints: warnings
+      }
+    };
+  } catch (error) {
+    return {
+      ok: false,
+      error: error instanceof Error ? error.message : String(error)
+    };
+  }
+}
+
+async function extractFeishuDocInPage(manualSelector) {
+  const sleep = (ms) =>
+    new Promise((resolve) => {
+      setTimeout(resolve, ms);
+    });
+
+  const normalizeUrl = (rawUrl) => {
+    if (!rawUrl || typeof rawUrl !== 'string') {
+      return '';
+    }
+
+    const trimmed = rawUrl.trim();
+    if (!trimmed) {
+      return '';
+    }
+
+    if (trimmed.startsWith('//')) {
+      return `${location.protocol}${trimmed}`;
+    }
+
+    if (trimmed.startsWith('blob:') || trimmed.startsWith('data:')) {
+      return '';
+    }
+
+    try {
+      return new URL(trimmed, location.href).toString();
+    } catch {
+      return trimmed;
+    }
+  };
+
+  const normalizeText = (value) => String(value || '').replace(/\s+/g, ' ').trim();
+
+  const firstNonEmpty = (values) => {
+    for (const value of values) {
+      const text = normalizeText(value);
+      if (text) {
+        return text;
+      }
+    }
+    return '';
+  };
+
+  const textLength = (node) => normalizeText(node?.textContent).replace(/\s+/g, '').length;
+
+  const isVisible = (node) => {
+    if (!(node instanceof HTMLElement)) return false;
+    const style = window.getComputedStyle(node);
+    const rect = node.getBoundingClientRect();
+    return style.display !== 'none' && style.visibility !== 'hidden' && rect.width > 0 && rect.height > 0;
+  };
+
+  const isLoginPage = () => {
+    const host = location.host.toLowerCase();
+    if (host.includes('accounts.feishu.cn')) {
+      return true;
+    }
+
+    const bodyText = (document.body?.innerText || '').slice(0, 1200);
+    const title = document.title || '';
+    return /(扫码登录|飛書 - 登入|飞书 - 登录|切换至Lark登录)/i.test(`${title}\n${bodyText}`);
+  };
+
+  const findContentRoot = () => {
+    if (manualSelector) {
+      const manualNode = document.querySelector(manualSelector);
+      if (manualNode && textLength(manualNode) > 30) {
+        return manualNode;
+      }
+    }
+
+    const preferredSelectors = [
+      '[data-testid*="doc"] [contenteditable="true"]',
+      '[class*="docx"] [contenteditable="true"]',
+      '[class*="lark-editor"] [contenteditable="true"]',
+      '[class*="editor"] [contenteditable="true"]',
+      '[data-testid*="editor"]',
+      '[class*="docx-editor"]',
+      '[class*="lark-editor"]',
+      'main',
+      'article'
+    ];
+
+    for (const selector of preferredSelectors) {
+      const nodes = [...document.querySelectorAll(selector)].filter((node) => isVisible(node));
+      const hit = nodes.find((node) => textLength(node) > 120);
+      if (hit) return hit;
+    }
+
+    const badClassPattern = /(catalog|comment|toolbar|header|footer|menu|aside|navigation|outline|sidebar)/i;
+    const candidates = [...document.querySelectorAll('main, article, section, div')]
+      .filter((node) => isVisible(node))
+      .filter((node) => {
+        const rect = node.getBoundingClientRect();
+        const cls = String(node.className || '');
+        return rect.width > 480 && rect.height > 240 && !badClassPattern.test(cls);
+      })
+      .map((node) => {
+        const pCount = node.querySelectorAll('p, h1, h2, h3, h4, li, blockquote').length;
+        const imgCount = node.querySelectorAll('img').length;
+        const score = textLength(node) + pCount * 20 + imgCount * 80;
+        return { node, score };
+      })
+      .sort((a, b) => b.score - a.score);
+
+    return candidates[0]?.node ?? null;
+  };
+
+  const getScrollTarget = (root) => {
+    let node = root;
+
+    while (node && node !== document.body && node !== document.documentElement) {
+      if (!(node instanceof HTMLElement)) {
+        node = node.parentElement;
+        continue;
+      }
+
+      const style = window.getComputedStyle(node);
+      const overflowY = style.overflowY || '';
+      const canScroll = /(auto|scroll)/i.test(overflowY) && node.scrollHeight > node.clientHeight + 120;
+      if (canScroll) {
+        return { node, isWindow: false };
+      }
+
+      node = node.parentElement;
+    }
+
+    return { node: document.scrollingElement || document.documentElement, isWindow: true };
+  };
+
+  const getMaxScroll = (scrollTarget) => {
+    if (scrollTarget.isWindow) {
+      const root = document.scrollingElement || document.documentElement;
+      return Math.max(0, root.scrollHeight - window.innerHeight);
+    }
+
+    const element = scrollTarget.node;
+    return Math.max(0, element.scrollHeight - element.clientHeight);
+  };
+
+  const setScrollTop = (scrollTarget, top) => {
+    if (scrollTarget.isWindow) {
+      window.scrollTo(0, top);
+      return;
+    }
+    scrollTarget.node.scrollTop = top;
+  };
+
+  const cleanInlineNode = (node) => {
+    const cloned = node.cloneNode(true);
+    const escapeText = (value) =>
+      String(value || '')
+        .replace(/&/g, '&amp;')
+        .replace(/</g, '&lt;')
+        .replace(/>/g, '&gt;')
+        .replace(/"/g, '&quot;')
+        .replace(/'/g, '&#39;');
+
+    cloned.querySelectorAll('script, style, noscript, iframe, canvas, video, audio, input, textarea, button').forEach((n) => {
+      n.remove();
+    });
+
+    [...cloned.querySelectorAll('*')].forEach((n) => {
+      n.removeAttribute('id');
+      n.removeAttribute('class');
+      n.removeAttribute('style');
+      n.removeAttribute('data-testid');
+      n.removeAttribute('data-offset-key');
+      n.removeAttribute('contenteditable');
+      n.removeAttribute('spellcheck');
+    });
+
+    if (cloned instanceof HTMLImageElement) {
+      const src = normalizeUrl(
+        firstNonEmpty([
+          cloned.getAttribute('src'),
+          cloned.getAttribute('data-src'),
+          cloned.getAttribute('data-url'),
+          cloned.getAttribute('data-lark-source'),
+          cloned.getAttribute('data-origin-src')
+        ])
+      );
+      if (!src) {
+        return '';
+      }
+      const alt = escapeText(firstNonEmpty([cloned.getAttribute('alt'), cloned.getAttribute('data-alt')]));
+      return `<p><img src="${escapeText(src)}"${alt ? ` alt="${alt}"` : ''} /></p>`;
+    }
+
+    const html = cloned.outerHTML || '';
+    return html.trim();
+  };
+
+  const collectVisibleBlocks = (root, htmlSet, blocks, imageSet, imageList) => {
+    if (!root) return;
+
+    const nodes = [...root.querySelectorAll('h1, h2, h3, h4, p, li, blockquote, pre, table, figure, img')].filter((node) => {
+      if (!isVisible(node)) return false;
+      if (node instanceof HTMLImageElement) return true;
+      return textLength(node) > 3 || node.querySelector('img');
+    });
+
+    for (const node of nodes) {
+      if (node instanceof HTMLImageElement) {
+        const src = normalizeUrl(
+          firstNonEmpty([
+            node.getAttribute('src'),
+            node.getAttribute('data-src'),
+            node.getAttribute('data-url'),
+            node.getAttribute('data-lark-source'),
+            node.getAttribute('data-origin-src')
+          ])
+        );
+        if (!src || imageSet.has(src)) {
+          continue;
+        }
+        imageSet.add(src);
+        imageList.push({
+          index: imageList.length,
+          src,
+          alt: firstNonEmpty([node.getAttribute('alt'), node.getAttribute('data-alt')])
+        });
+      }
+
+      const html = cleanInlineNode(node);
+      if (!html) continue;
+
+      const signature = `${node.tagName}:${normalizeText(node.textContent).slice(0, 300)}:${html.slice(0, 200)}`;
+      if (htmlSet.has(signature)) {
+        continue;
+      }
+
+      htmlSet.add(signature);
+      blocks.push({
+        html,
+        text: normalizeText(node.textContent)
+      });
+    }
+  };
+
+  try {
+    if (isLoginPage()) {
+      throw new Error('飞书文档未登录，请先在飞书页面登录后重试');
+    }
+
+    let contentRoot = null;
+    for (let attempt = 0; attempt < 140; attempt += 1) {
+      contentRoot = findContentRoot();
+      if (contentRoot && textLength(contentRoot) > 80) break;
+      await sleep(180);
+    }
+
+    if (!contentRoot) {
+      throw new Error('未定位到飞书文档正文区域，请滚动页面后重试');
+    }
+
+    const scrollTarget = getScrollTarget(contentRoot);
+    const htmlSet = new Set();
+    const imageSet = new Set();
+    const blocks = [];
+    const images = [];
+
+    const viewport = scrollTarget.isWindow ? window.innerHeight : scrollTarget.node.clientHeight;
+    const step = Math.max(300, Math.floor(viewport * 0.72));
+
+    let position = 0;
+    let maxScroll = getMaxScroll(scrollTarget);
+    let guard = 0;
+
+    while (position <= maxScroll + step && guard < 420) {
+      setScrollTop(scrollTarget, position);
+      await sleep(260);
+
+      contentRoot = findContentRoot() || contentRoot;
+      collectVisibleBlocks(contentRoot, htmlSet, blocks, imageSet, images);
+
+      const nextMax = getMaxScroll(scrollTarget);
+      maxScroll = Math.max(maxScroll, nextMax);
+      position += step;
+      guard += 1;
+    }
+
+    setScrollTop(scrollTarget, 0);
+    await sleep(120);
+
+    if (!blocks.length) {
+      throw new Error('飞书正文提取为空，请确认文档已加载完成');
+    }
+
+    const title = firstNonEmpty([
+      document.querySelector('meta[property="og:title"]')?.getAttribute('content'),
+      document.querySelector('meta[name="twitter:title"]')?.getAttribute('content'),
+      document.querySelector('[data-testid*="title"]')?.textContent,
+      document.querySelector('h1')?.textContent,
+      (document.title || '').replace(/\s*[-|_].*飞书.*$/i, ''),
+      document.title
+    ]);
+
+    const contentHtml = blocks
+      .map((item) => item.html)
+      .filter(Boolean)
+      .join('\n')
+      .trim();
+    const textPlain = blocks
+      .map((item) => item.text)
+      .filter(Boolean)
+      .join('\n')
+      .replace(/\s{2,}/g, ' ')
+      .trim();
+
+    const wordCount = textPlain.replace(/\s+/g, '').length;
+    const paragraphCount = blocks.length;
+    const coverUrl = images.find((item) => item.src)?.src || '';
+
+    const warnings = [];
+    if (!coverUrl) warnings.push('未识别到封面图');
+    if (wordCount === 0) warnings.push('正文字数为 0，可能提取失败');
+    if (paragraphCount < 4) warnings.push('检测到段落较少，可能未完整加载全部正文');
 
     return {
       ok: true,

@@ -3,89 +3,131 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>FBIF OneClick Publish</title>
-    <link rel="stylesheet" href="styles/vendor/pico.min.css" />
+    <title>FoodTalks 内容同步</title>
     <link rel="stylesheet" href="styles/app.css" />
   </head>
-  <body>
-    <main class="container app-shell">
-      <header class="app-header">
-        <div>
-          <p class="meta-label">FBIF Distribution</p>
-          <h1>内容提取与多平台发布</h1>
-        </div>
-        <div class="header-actions">
-          <label class="inline-switch" for="followTabsInput">
-            <input id="followTabsInput" type="checkbox" checked />
-            <span>跟随标签页跳转</span>
-          </label>
-          <button id="clearLogsButton" class="secondary outline" type="button">清空日志</button>
-        </div>
-      </header>
+  <body class="ft-page">
+    <header class="ft-topbar">
+      <div>
+        <p class="ft-kicker">FoodTalks Sync</p>
+        <h1>飞书云文档同步到 FoodTalks</h1>
+      </div>
+      <label class="ft-switch" for="followTabsInput">
+        <input id="followTabsInput" type="checkbox" checked />
+        <span>跟随标签页切换</span>
+      </label>
+    </header>
 
-      <section class="card-block" aria-labelledby="extract-title">
-        <h2 id="extract-title">1. 提取公众号内容</h2>
-        <div class="extract-row">
-          <input id="urlInput" type="url" placeholder="https://mp.weixin.qq.com/s?..." />
-          <button id="extractButton" type="button">提取正文</button>
+    <main class="ft-layout">
+      <section class="ft-panel ft-left">
+        <h2>0. 飞书应用凭据</h2>
+        <div class="ft-credentials">
+          <input id="feishuAppIdInput" type="text" placeholder="App ID（例如 cli_xxx）" autocomplete="off" />
+          <input id="feishuAppSecretInput" type="password" placeholder="App Secret" autocomplete="off" />
+          <button id="saveFeishuConfigButton" class="btn" type="button">保存凭据</button>
         </div>
-        <p id="extractStatus" class="status" data-tone="info">请输入公众号链接并点击“提取正文”</p>
+        <p id="feishuConfigStatus" class="ft-status" data-tone="info">请先填写飞书 App ID / App Secret</p>
 
-        <div class="metrics-grid">
+        <h2>1. 输入飞书云文档链接</h2>
+        <div class="ft-url-row">
+          <input id="urlInput" type="url" placeholder="https://*.feishu.cn/docx/..." />
+          <button id="extractButton" class="btn btn-primary" type="button">提取内容</button>
+        </div>
+        <p id="extractStatus" class="ft-status" data-tone="info">等待提取</p>
+
+        <div class="ft-metrics">
           <article>
             <span>字数</span>
             <strong id="wordCount">0</strong>
           </article>
           <article>
-            <span>图片数</span>
+            <span>图片</span>
             <strong id="imageCount">0</strong>
           </article>
           <article>
-            <span>段落数</span>
+            <span>段落</span>
             <strong id="paragraphCount">0</strong>
           </article>
         </div>
 
-        <ul id="validationList" class="validation-list"></ul>
+        <ul id="validationList" class="ft-list"></ul>
+
+        <h2>2. 同步到 FoodTalks</h2>
+        <div class="ft-actions">
+          <button id="openFoodtalksButton" class="btn" type="button">打开 FoodTalks 发布页</button>
+          <button id="copyFoodtalksCodeButton" class="btn btn-primary" type="button">复制正文代码（手动粘贴）</button>
+          <button id="syncDraftButton" class="btn btn-primary" type="button">同步并保存草稿</button>
+          <button id="syncPublishButton" class="btn" type="button">同步并直接发布</button>
+        </div>
+
+        <div class="ft-progress" role="status">
+          <div class="ft-progress-track"><div id="publishProgressBar" class="ft-progress-bar"></div></div>
+          <p id="publishProgressText">待同步</p>
+        </div>
+
+        <ul id="publishResultList" class="ft-list"></ul>
+
+        <div class="ft-log-head">
+          <h2>运行日志</h2>
+          <button id="clearLogsButton" class="btn btn-ghost" type="button">清空</button>
+        </div>
+        <ul id="logList" class="ft-log-list"></ul>
+
+        <section class="ft-meta-dock">
+          <h2>3. 发布信息</h2>
+          <label for="titleInput" class="ft-label">标题</label>
+          <input id="titleInput" type="text" placeholder="提取后可微调标题" />
+
+          <label class="ft-label">封面</label>
+          <figure class="ft-cover-mini">
+            <img id="coverPreview" class="placeholder" alt="封面预览" />
+          </figure>
+        </section>
       </section>
 
-      <section class="card-block" aria-labelledby="preview-title">
-        <h2 id="preview-title">2. 内容预览</h2>
-        <label for="titleInput">标题</label>
-        <input id="titleInput" type="text" placeholder="提取后可修改标题" />
-
-        <figure class="cover-box">
-          <img id="coverPreview" class="placeholder" alt="封面预览" />
-        </figure>
-
-        <article id="contentPreview" class="content-preview"></article>
-      </section>
-
-      <section class="card-block" aria-labelledby="publish-title">
-        <h2 id="publish-title">3. 平台发布</h2>
-        <div id="platformList" class="platform-list"></div>
-
-        <div class="publish-row">
-          <button id="publishButton" type="button">同步发布</button>
-          <div class="progress-wrap" role="status">
-            <div class="progress-track">
-              <div id="publishProgressBar" class="progress-bar"></div>
+      <section class="ft-panel ft-right">
+        <div class="ft-editor-top">
+          <h2>正文编辑</h2>
+          <div id="editorToolbar" class="ft-editor-toolbar" role="toolbar" aria-label="编辑工具栏">
+            <div class="ft-tool-group">
+              <button type="button" class="ft-tool-btn ft-tool-icon" data-command="undo" title="撤销">↺</button>
+              <button type="button" class="ft-tool-btn ft-tool-icon" data-command="redo" title="重做">↻</button>
             </div>
-            <p id="publishProgressText">待发布</p>
+            <div class="ft-tool-group">
+              <select id="formatBlockSelect" class="ft-tool-select" aria-label="段落样式">
+                <option value="p">正文</option>
+                <option value="h1">标题 1</option>
+                <option value="h2">标题 2</option>
+                <option value="blockquote">引用</option>
+              </select>
+            </div>
+            <div class="ft-tool-group">
+              <button type="button" class="ft-tool-btn" data-command="bold" title="加粗"><strong>B</strong></button>
+              <button type="button" class="ft-tool-btn" data-command="italic" title="斜体"><em>I</em></button>
+              <button type="button" class="ft-tool-btn" data-command="removeFormat" title="清除格式">清除</button>
+            </div>
+            <div class="ft-tool-group">
+              <button type="button" class="ft-tool-btn" data-command="insertUnorderedList" title="无序列表">无序列表</button>
+              <button type="button" class="ft-tool-btn" data-command="insertOrderedList" title="有序列表">有序列表</button>
+            </div>
+            <div class="ft-tool-group">
+              <button type="button" class="ft-tool-btn" data-command="createLink" title="插入链接">链接</button>
+            </div>
           </div>
         </div>
 
-        <ul id="publishResultList" class="publish-result-list"></ul>
-      </section>
-
-      <section class="card-block" aria-labelledby="log-title">
-        <h2 id="log-title">运行日志</h2>
-        <ul id="logList" class="log-list"></ul>
-      </section>
-
-      <section class="card-block" aria-labelledby="draft-title">
-        <h2 id="draft-title">失败回退草稿</h2>
-        <ul id="failedDraftList" class="draft-list"></ul>
+        <section class="ft-editor-shell">
+          <aside class="ft-toc" aria-label="飞书目录">
+            <div class="ft-toc-head">
+              <h3>目录</h3>
+              <span id="tocCount" class="ft-toc-count">0</span>
+            </div>
+            <ul id="tocList" class="ft-toc-list">
+              <li class="ft-toc-empty">提取后自动生成目录</li>
+            </ul>
+          </aside>
+          <article id="contentPreview" class="ft-preview" contenteditable="true" spellcheck="false"></article>
+        </section>
       </section>
     </main>
 
