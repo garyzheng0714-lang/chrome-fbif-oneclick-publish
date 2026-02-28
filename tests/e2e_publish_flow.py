@@ -14,10 +14,9 @@ from pathlib import Path
 from playwright.sync_api import sync_playwright
 import shutil
 
-WORKSPACE = Path('/Users/simba/local_vibecoding/fbif-oneclick publish')
+WORKSPACE = Path('/Library/vibecoding_home/chrome-fbif-oneclick-publish')
 PROFILE_DIR = Path('/tmp/fbif-e2e-extension-profile')
-TARGET_ARTICLE = 'https://mp.weixin.qq.com/s/mGrw5py6uJ1kRJI2xEtnGg'
-PLATFORMS = ['xiaohongshu', 'zhihu']
+TARGET_ARTICLE = 'https://foodtalks.feishu.cn/docx/UMsDdOwGNoUww0x6G1VcWoSLnMd'
 
 
 def main() -> None:
@@ -52,17 +51,9 @@ def main() -> None:
         print('wordCount=', page.locator('#wordCount').inner_text())
         print('imageCount=', page.locator('#imageCount').inner_text())
 
-        for platform in PLATFORMS:
-            page.check(f'.platform-checkbox[value="{platform}"]')
-
-        page.click('#publishButton')
-        page.wait_for_timeout(45000)
-
-        result_cards = page.locator('#publishResultList .publish-result')
-        count = result_cards.count()
-        print('publish_results=', count)
-        for i in range(count):
-            print(result_cards.nth(i).inner_text())
+        page.click('#copyAndOpenButton')
+        page.wait_for_timeout(2000)
+        print('extract_status=', page.locator('#extractStatus').inner_text())
 
         screenshot = '/tmp/fbif-e2e-publish-flow.png'
         page.screenshot(path=screenshot, full_page=True)

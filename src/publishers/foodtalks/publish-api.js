@@ -1,4 +1,5 @@
 import { FOODTALKS_SELECTORS } from './selectors.js';
+import { demoteHeadingsByOneLevel } from '../shared/heading-normalizer.js';
 
 const PAGE_READY_TIMEOUT_MS = 70_000;
 const IMPORT_WAIT_TIMEOUT_MS = 90_000;
@@ -134,6 +135,42 @@ async function autoFillFoodtalksPublishPage(payload = {}) {
     }
   };
 
+  const setEditableText = (node, value) => {
+    if (!(node instanceof HTMLElement) || !node.isContentEditable) {
+      return false;
+    }
+
+    try {
+      node.focus();
+      node.innerHTML = '';
+      node.textContent = String(value ?? '');
+      node.dispatchEvent(new Event('input', { bubbles: true }));
+      node.dispatchEvent(new Event('change', { bubbles: true }));
+      node.dispatchEvent(new Event('blur', { bubbles: true }));
+      return true;
+    } catch {
+      return false;
+    }
+  };
+
+  const getNodeMarkerText = (node) => {
+    if (!(node instanceof HTMLElement)) {
+      return '';
+    }
+
+    const parts = [
+      node.textContent || '',
+      node.getAttribute('title') || '',
+      node.getAttribute('aria-label') || '',
+      node.getAttribute('aria-describedby') || '',
+      node.getAttribute('data-menu-key') || '',
+      node.getAttribute('data-command') || '',
+      node.className || ''
+    ];
+
+    return normalizeText(parts.join(' '));
+  };
+
   const waitUntil = async (predicate, timeoutMs = 20_000, intervalMs = 250) => {
     const deadline = Date.now() + timeoutMs;
     while (Date.now() < deadline) {
@@ -266,6 +303,279 @@ async function autoFillFoodtalksPublishPage(payload = {}) {
     return false;
   };
 
+  const findSourceCodeButton = () => {
+    const fromSelector = queryVisible(selectors.sourceCodeButtonCandidates || []);
+    if (fromSelector) {
+      return fromSelector;
+    }
+
+    const byText = findButtonByText(['源代码', '源码', 'Source code']);
+    if (byText) {
+      return byText;
+    }
+
+    return null;
+  };
+
+  const collectSourceCodeToolbarButtons = () => {
+    const toolbarSelectors = [
+      '.tox-toolbar',
+      '.tox-toolbar__primary',
+      '.w-e-toolbar',
+      '.w-e-bar',
+      '.ql-toolbar',
+      '.editor-toolbar',
+      '.editor__toolbar',
+      '.edui-toolbar',
+      '.ck-toolbar'
+    ];
+    const buttonSelectors = 'button, [role="button"], .tox-tbtn, .w-e-menu, .w-e-bar-item, a';
+    const labelPattern = /(源代码|源码|source\s*code|html|代码)/i;
+    const iconPattern = /(source|code|html|源码|源代码|icon-code|fa-code|ri-code)/i;
+
+    const candidates = [];
+    const seen = new Set();
+
+    const genericToolbars = [...document.querySelectorAll('div, section')]
+      .filter((node) => {
+        if (!isVisible(node)) {
+          return false;
+        }
+        if (!(node instanceof HTMLElement)) {
+          return false;
+        }
+        const rect = node.getBoundingClientRect();
+        if (rect.width < 520 || rect.height < 28 || rect.height > 180) {
+          return false;
+        }
+        const clickableCount = node.querySelectorAll('button, [role="button"], .w-e-menu, .w-e-bar-item, a').length;
+        return clickableCount >= 10;
+      })
+      .slice(0, 16);
+
+    const toolbarNodes = new Set([
+      ...toolbarSelectors.flatMap((selector) => [...document.querySelectorAll(selector)].filter((node) => isVisible(node))),
+      ...genericToolbars
+    ]);
+
+    [...toolbarNodes].forEach((toolbar) => {
+      const buttons = [...toolbar.querySelectorAll(buttonSelectors)].filter((node) => isVisible(node));
+      buttons.forEach((button, index) => {
+        if (!(button instanceof HTMLElement) || seen.has(button)) {
+          return;
+        }
+        seen.add(button);
+
+        const marker = getNodeMarkerText(button);
+        let score = 0;
+        if (labelPattern.test(marker)) {
+          score += 120;
+        }
+        if (iconPattern.test(marker)) {
+          score += 80;
+        }
+        if (/[<＜]\s*\/?\s*[>＞]/.test(marker) || /&lt;\s*\/?\s*&gt;/i.test(button.innerHTML || '')) {
+          score += 90;
+        }
+        if (index === 0) {
+          score += 16;
+        }
+
+        candidates.push({ button, score, index });
+      });
+    });
+
+    return candidates
+      .sort((a, b) => b.score - a.score || a.index - b.index)
+      .map((item) => item.button);
+  };
+
+  const findSourceCodeDialog = () => {
+    const fromSelector = queryVisible(selectors.sourceCodeDialogCandidates || []);
+    if (fromSelector) {
+      const hasInput = Boolean(
+        fromSelector.querySelector('textarea, input, [contenteditable="true"], .CodeMirror textarea')
+      );
+      if (hasInput) {
+        return fromSelector;
+      }
+    }
+
+    const candidates = [
+      ...document.querySelectorAll('.tox-dialog, .el-dialog, .el-dialog__wrapper, .w-e-modal, [role="dialog"]')
+    ].filter((node) => isVisible(node));
+
+    return (
+      candidates.find((node) => {
+        const hasInput = Boolean(node.querySelector('textarea, input, [contenteditable="true"], .CodeMirror textarea'));
+        if (!hasInput) {
+          return false;
+        }
+        const marker = [
+          node.getAttribute('aria-label') || '',
+          node.getAttribute('title') || '',
+          normalizeText(node.textContent || '')
+        ].join(' ');
+        return /(源代码|源码|source\s*code|html|代码)/i.test(marker);
+      }) || null
+    );
+  };
+
+  const findSourceCodeDialogByTextarea = () => {
+    const textareas = [...document.querySelectorAll('textarea')]
+      .filter((node) => isVisible(node))
+      .map((node) => ({
+        node,
+        rect: node.getBoundingClientRect()
+      }))
+      .filter(({ rect }) => rect.width >= 420 && rect.height >= 200)
+      .sort((a, b) => b.rect.width * b.rect.height - a.rect.width * a.rect.height);
+
+    const candidate = textareas[0]?.node || null;
+    if (!candidate) {
+      return null;
+    }
+
+    const container =
+      candidate.closest('.el-dialog, .el-dialog__wrapper, .tox-dialog, .w-e-modal, [role="dialog"]') ||
+      candidate.parentElement;
+    if (!(container instanceof HTMLElement)) {
+      return null;
+    }
+
+    const marker = normalizeText(container.textContent || '');
+    if (/(源代码|源码|source\s*code|html|代码)/i.test(marker)) {
+      return container;
+    }
+
+    const overlayVisible = Boolean(
+      [...document.querySelectorAll('.v-modal, .el-overlay, .modal-backdrop, .tox-dialog-wrap')]
+        .filter((node) => isVisible(node)).length
+    );
+
+    return overlayVisible ? container : null;
+  };
+
+  const setSourceCodeInputValue = (dialog, html) => {
+    if (!(dialog instanceof HTMLElement)) {
+      return false;
+    }
+
+    const scopedCandidates = selectors.sourceCodeInputCandidates || [];
+    const fromSelector = scopedCandidates
+      .map((selector) => [...dialog.querySelectorAll(selector)].find((node) => isVisible(node)))
+      .find(Boolean);
+    const inputNode =
+      fromSelector ||
+      dialog.querySelector('textarea, .CodeMirror textarea, input[type="text"], input:not([type]), [contenteditable="true"]');
+
+    if (!inputNode) {
+      return false;
+    }
+
+    if (inputNode instanceof HTMLTextAreaElement || inputNode instanceof HTMLInputElement) {
+      return setNativeValue(inputNode, html);
+    }
+
+    if (inputNode instanceof HTMLElement && inputNode.isContentEditable) {
+      return setEditableText(inputNode, html);
+    }
+
+    return false;
+  };
+
+  const clickSourceCodeSave = (dialog) => {
+    const fromSelector = queryVisible(selectors.sourceCodeSaveButtonCandidates || []);
+    if (fromSelector && dialog?.contains(fromSelector)) {
+      return clickLikeUser(fromSelector);
+    }
+
+    const button = findButtonByText(['保存', '确定', '确认', '应用', 'Save', 'Apply'], dialog || document);
+    return clickLikeUser(button);
+  };
+
+  const tryOpenSourceCodeDialog = async () => {
+    const existedDialog = findSourceCodeDialog();
+    if (existedDialog) {
+      return existedDialog;
+    }
+
+    const textareaDialog = findSourceCodeDialogByTextarea();
+    if (textareaDialog) {
+      return textareaDialog;
+    }
+
+    const tinyEditor = getTinymceEditor();
+    if (tinyEditor?.execCommand) {
+      try {
+        tinyEditor.execCommand('mceCodeEditor');
+      } catch {
+        // ignore command failure
+      }
+
+      const tinyDialog = await waitUntil(() => findSourceCodeDialog(), 1_400, 120);
+      if (tinyDialog) {
+        return tinyDialog;
+      }
+    }
+
+    const directButton = findSourceCodeButton();
+    if (directButton && clickLikeUser(directButton)) {
+      const directDialog = await waitUntil(
+        () => findSourceCodeDialog() || findSourceCodeDialogByTextarea(),
+        1_600,
+        120
+      );
+      if (directDialog) {
+        return directDialog;
+      }
+    }
+
+    const toolbarButtons = collectSourceCodeToolbarButtons();
+    const attempts = toolbarButtons.slice(0, 10);
+    for (const button of attempts) {
+      if (!clickLikeUser(button)) {
+        continue;
+      }
+
+      const dialog = await waitUntil(
+        () => findSourceCodeDialog() || findSourceCodeDialogByTextarea(),
+        1_200,
+        120
+      );
+      if (dialog) {
+        return dialog;
+      }
+    }
+
+    return null;
+  };
+
+  const setEditorContentBySourceCode = async (html) => {
+    const finalHtml = adaptHtmlForFoodtalksEditor(html);
+    if (!finalHtml) {
+      return false;
+    }
+
+    const dialog = await tryOpenSourceCodeDialog();
+    if (!dialog) {
+      return false;
+    }
+
+    const valueSet = setSourceCodeInputValue(dialog, finalHtml);
+    if (!valueSet) {
+      return false;
+    }
+
+    const saveClicked = clickSourceCodeSave(dialog);
+    if (!saveClicked) {
+      return false;
+    }
+
+    await waitUntil(() => getEditorTextLength() > 10, 8_000, 220);
+    return true;
+  };
+
   const adaptHtmlForFoodtalksEditor = (rawHtml) => {
     const sourceHtml = String(rawHtml || '').trim();
     if (!sourceHtml) {
@@ -358,6 +668,8 @@ async function autoFillFoodtalksPublishPage(payload = {}) {
         wrapper.appendChild(img);
       }
     });
+
+    demoteHeadingsByOneLevel(body);
 
     body.querySelectorAll('h1,h2,h3,h4,h5,h6').forEach((heading, index) => {
       if (!normalizeText(heading.id)) {
@@ -514,7 +826,14 @@ async function autoFillFoodtalksPublishPage(payload = {}) {
   const pageReady = await waitUntil(() => {
     const titleInput = findTitleInput();
     const publishButton = queryVisible(selectors.publishButtonCandidates || []);
-    return Boolean(titleInput && publishButton);
+    const contentSignals = Boolean(
+      findSourceCodeButton() ||
+      getTinymceEditor() ||
+      queryVisible(selectors.editorIframeCandidates || []) ||
+      queryVisible(selectors.editorContentEditableCandidates || []) ||
+      findFormItemByLabel(selectors.contentLabelKeywords || ['内容'])
+    );
+    return Boolean(publishButton && (titleInput || contentSignals));
   }, payload.pageReadyTimeoutMs || PAGE_READY_TIMEOUT_MS);
 
   if (!pageReady) {
@@ -526,6 +845,8 @@ async function autoFillFoodtalksPublishPage(payload = {}) {
 
   let importerUsed = false;
   let importerSucceeded = false;
+  let sourceCodeModeUsed = false;
+  let sourceCodeModeSucceeded = false;
 
   const sourceUrl = String(payload.sourceUrl || payload.url || '').trim();
   const preferImporter = false;
@@ -595,8 +916,13 @@ async function autoFillFoodtalksPublishPage(payload = {}) {
     const text = String(payload.textPlain || '').trim();
     const fallbackHtml = html || (text ? `<p>${text.replace(/\n/g, '</p><p>')}</p>` : '');
 
-    if (fallbackHtml && !setEditorContent(fallbackHtml)) {
-      warnings.push('正文编辑器未定位成功，请手动粘贴正文');
+    if (fallbackHtml) {
+      sourceCodeModeUsed = true;
+      sourceCodeModeSucceeded = await setEditorContentBySourceCode(fallbackHtml);
+
+      if (!sourceCodeModeSucceeded && !setEditorContent(fallbackHtml)) {
+        warnings.push('正文编辑器未定位成功，请手动粘贴正文');
+      }
     }
   }
 
@@ -627,6 +953,8 @@ async function autoFillFoodtalksPublishPage(payload = {}) {
     detail: {
       importerUsed,
       importerSucceeded,
+      sourceCodeModeUsed,
+      sourceCodeModeSucceeded,
       action,
       actionTriggered,
       titleLength: normalizeText(findTitleInput()?.value || '').length,

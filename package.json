@@ -6,6 +6,7 @@
   "type": "module",
   "scripts": {
     "test": "node --test tests/*.test.mjs",
+    "benchmark:wechat-sync": "node scripts/benchmark-wechat-sync.mjs",
     "package": "node scripts/package-extension.mjs"
   },
   "devDependencies": {

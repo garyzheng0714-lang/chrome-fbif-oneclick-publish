@@ -1,32 +1,41 @@
 {
   "manifest_version": 3,
-  "name": "FBIF OneClick Publish",
+  "name": "FBIF 飞书云文档文章同步助手",
   "version": "1.0.0",
-  "description": "微信公众号内容提取并同步到 FoodTalks 后台的 Chrome 扩展",
+  "description": "飞书文档内容提取并同步到 FoodTalks 与公众号后台的 Chrome 扩展",
   "permissions": [
     "tabs",
     "windows",
     "storage",
     "scripting",
     "activeTab",
-    "downloads",
     "clipboardWrite"
   ],
   "host_permissions": [
-    "https://mp.weixin.qq.com/*",
     "https://*.feishu.cn/*",
+    "https://*.larkoffice.com/*",
     "https://admin-we.foodtalks.cn/*",
     "https://*.foodtalks.cn/*",
-    "https://mmbiz.qpic.cn/*",
-    "https://*.qpic.cn/*",
-    "https://res.wx.qq.com/*"
+    "https://mp.weixin.qq.com/*"
   ],
   "background": {
     "service_worker": "background.js",
     "type": "module"
   },
+  "icons": {
+    "16": "icons/icon-16.png",
+    "32": "icons/icon-32.png",
+    "48": "icons/icon-48.png",
+    "128": "icons/icon-128.png"
+  },
   "action": {
-    "default_title": "飞书提取并复制",
+    "default_title": "FBIF 飞书云文档文章同步助手",
+    "default_icon": {
+      "16": "icons/icon-16.png",
+      "32": "icons/icon-32.png",
+      "48": "icons/icon-48.png",
+      "128": "icons/icon-128.png"
+    },
     "default_popup": "popup.html"
   },
   "web_accessible_resources": [

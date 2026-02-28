@@ -695,3 +695,118 @@ select:focus {
     max-height: 220px;
   }
 }
+
+.ft-layout-pro {
+  display: grid;
+  gap: 16px;
+  grid-template-columns: minmax(0, 1.15fr) minmax(320px, 0.85fr);
+  align-items: start;
+}
+
+.ft-main {
+  display: grid;
+  gap: 14px;
+}
+
+.ft-sidebar {
+  display: grid;
+  gap: 14px;
+  position: sticky;
+  top: 16px;
+}
+
+.ft-step {
+  border: 1px solid #e7edf7;
+  border-radius: 12px;
+  padding: 14px;
+  background: #fcfdff;
+}
+
+.ft-step h2 {
+  margin: 0 0 10px;
+  font-size: 16px;
+}
+
+.ft-banner {
+  margin: 0;
+  padding: 10px 12px;
+  border: 1px solid #f2dfbc;
+  border-radius: 8px;
+  background: #fff8eb;
+  color: #ad6a00;
+  font-size: 13px;
+}
+
+.ft-topbar-meta {
+  display: inline-flex;
+  gap: 8px;
+}
+
+.ft-actions-single {
+  margin-top: 10px;
+}
+
+.ft-hint {
+  margin: 0 0 10px;
+  color: var(--muted);
+  font-size: 13px;
+  line-height: 1.5;
+}
+
+.ft-inline-actions {
+  display: flex;
+  gap: 8px;
+  margin-bottom: 10px;
+}
+
+.ft-check {
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  padding: 8px 10px;
+  background: #fff;
+  font-size: 13px;
+}
+
+.ft-check-meta {
+  margin-top: 4px;
+  color: #6c7583;
+  font-size: 12px;
+}
+
+.ft-check-pass,
+.ft-check-success {
+  border-color: #bde8d4;
+  color: #0f8a5f;
+  background: #f0fbf6;
+}
+
+.ft-check-warn {
+  border-color: #f2dfbc;
+  color: #ad6a00;
+  background: #fff8eb;
+}
+
+.ft-check-error {
+  border-color: #f1c8c6;
+  color: #c23934;
+  background: #fff3f2;
+}
+
+.ft-preview {
+  min-height: 320px;
+  max-height: 520px;
+}
+
+.ft-history {
+  max-height: 260px;
+}
+
+@media (max-width: 1180px) {
+  .ft-layout-pro {
+    grid-template-columns: 1fr;
+  }
+
+  .ft-sidebar {
+    position: static;
+  }
+}

@@ -3,8 +3,8 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>FBIF 飞书云文档文章同步助手</title>
-    <link rel="stylesheet" href="styles/popup.css" />
+    <title>FBIF 同步页</title>
+    <link rel="stylesheet" href="styles/panel.css" />
   </head>
   <body class="popup-page">
     <main class="popup-card">
@@ -44,7 +44,6 @@
         placeholder="粘贴飞书文档链接（docx/wiki）"
         autocomplete="off"
       />
-
       <div class="helper-row">
         <p id="hintText" class="hint-text" data-tone="info">
           <span class="status-dot" aria-hidden="true"></span>
@@ -74,7 +73,26 @@
         </p>
       </div>
 
-      <button id="actionButton" class="btn btn-primary" type="button">提取并打开同步页</button>
+      <section id="targetSection" class="target-section is-hidden" aria-label="同步目标">
+        <label class="target-card" data-target="foodtalks">
+          <input type="radio" name="syncTarget" value="foodtalks" />
+          <span class="target-name">FoodTalks</span>
+        </label>
+        <label class="target-card" data-target="wechat">
+          <input type="radio" name="syncTarget" value="wechat" />
+          <span class="target-name">公众号</span>
+        </label>
+      </section>
+
+      <div id="wechatStatusTag" class="sync-status-tag is-hidden" data-status="idle">
+        <span id="wechatStatusText">公众号状态：待开始</span>
+      </div>
+
+      <button id="actionButton" class="btn btn-primary" type="button">提取飞书云文档内容</button>
+      <div id="cacheInfoRow" class="cache-info-row is-hidden">
+        <p id="cacheTimeText" class="cache-time-text"></p>
+        <button id="reextractButton" class="btn-link" type="button">重新提取</button>
+      </div>
 
       <section id="settingsPanel" class="settings-panel is-hidden" aria-label="凭据设置">
         <input id="feishuAppIdInput" class="field-input compact" type="text" placeholder="App ID" autocomplete="off" />
@@ -88,6 +106,6 @@
       </section>
     </main>
 
-    <script type="module" src="src/popup-launcher.js"></script>
+    <script type="module" src="src/panel.js"></script>
   </body>
 </html>

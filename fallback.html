@@ -85,18 +85,14 @@
       const platformId = new URLSearchParams(location.search).get('platform');
 
       const platformNameMap = {
-        xiaohongshu: '小红书',
-        zhihu: '知乎',
-        toutiao: '今日头条',
-        baijiahao: '百家号',
-        bilibili: 'B站专栏'
+        foodtalks: 'FoodTalks'
       };
 
       const subtitle = document.getElementById('subtitle');
       const draftList = document.getElementById('draftList');
 
       if (platformId) {
-        subtitle.textContent = `平台：${platformNameMap[platformId] || platformId}，请复制最新草稿后手动完成发布。`;
+        subtitle.textContent = `平台：${platformNameMap[platformId] || platformId}，请复制最新草稿并在 FoodTalks 页面手动完成发布。`;
       }
 
       chrome.storage.local.get(STORAGE_KEY).then((store) => {

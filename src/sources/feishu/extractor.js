@@ -149,6 +149,56 @@ function getRichTextElements(block) {
   return [];
 }
 
+function getRichTextContainerKey(block, container) {
+  if (!block || typeof block !== 'object' || !container || typeof container !== 'object') {
+    return '';
+  }
+
+  for (const [key, value] of Object.entries(block)) {
+    if (value === container) {
+      return key;
+    }
+  }
+
+  return '';
+}
+
+function getHeadingLevelByContainerKey(containerKey) {
+  const matched = String(containerKey || '').match(/^heading(\d+)$/i);
+  if (!matched?.[1]) {
+    return 0;
+  }
+
+  const level = Number(matched[1]);
+  if (!Number.isFinite(level) || level <= 0) {
+    return 0;
+  }
+
+  return Math.min(6, level);
+}
+
+function resolveTextBlockTag(block) {
+  const blockTypeTag = TEXT_BLOCK_TYPE_TO_TAG[Number(block?.block_type || 0)] || '';
+  const container = getRichTextContainer(block);
+  const containerKey = getRichTextContainerKey(block, container);
+  const headingLevel = getHeadingLevelByContainerKey(containerKey);
+
+  if (headingLevel > 0) {
+    return `h${headingLevel}`;
+  }
+
+  return blockTypeTag || 'p';
+}
+
+function resolveHeadingBlockTypeByTag(tag, fallbackBlockType) {
+  const matched = String(tag || '').match(/^h([1-6])$/i);
+  if (matched?.[1]) {
+    return Number(matched[1]) + 2;
+  }
+
+  return Number(fallbackBlockType || 0);
+}
+
 function pickBlockPayloadByKeys(block, keys = []) {
   if (!block || typeof block !== 'object') {
     return null;
@@ -602,8 +652,9 @@ function renderTextBlock(block, context) {
     return '';
   }
 
+  const tag = resolveTextBlockTag(block);
   const headingResult = applyHeadingSequenceRule({
-    blockType: block?.block_type,
+    blockType: resolveHeadingBlockTypeByTag(tag, block?.block_type),
     plainText,
     renderedHtml: html,
     context
@@ -612,7 +663,6 @@ function renderTextBlock(block, context) {
   collectTextContent(context, headingResult.plainText);
 
   context.paragraphCount += 1;
-  const tag = TEXT_BLOCK_TYPE_TO_TAG[Number(block?.block_type)] || 'p';
   const alignAttr = buildTextAlignAttr(getBlockTextAlign(block));
   return `<${tag}${alignAttr}>${html}</${tag}>`;
 }

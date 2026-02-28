@@ -237,6 +237,80 @@ test('extractFeishuDocByApi injects heading sequence when heading has no explici
   assert.equal(result.contentHtml.includes('>2.3 手工编号标题</h2>'), true);
 });
 
+test('extractFeishuDocByApi prefers heading payload level when block_type mismatches', async () => {
+  const docToken = 'DOCTOKENHEADINGMISMATCH001';
+
+  const mockFetch = async (url) => {
+    const textUrl = String(url);
+    if (textUrl.includes('/auth/v3/tenant_access_token/internal')) {
+      return createJsonResponse({
+        code: 0,
+        msg: 'success',
+        data: {
+          tenant_access_token: 'tenant_token',
+          expire: 7200
+        }
+      });
+    }
+
+    if (textUrl.endsWith(`/docx/v1/documents/${docToken}`)) {
+      return createJsonResponse({
+        code: 0,
+        msg: 'success',
+        data: {
+          document: {
+            title: '标题层级容错文档'
+          }
+        }
+      });
+    }
+
+    if (textUrl.includes(`/docx/v1/documents/${docToken}/blocks`)) {
+      return createJsonResponse({
+        code: 0,
+        msg: 'success',
+        data: {
+          has_more: false,
+          page_token: '',
+          items: [
+            {
+              block_id: docToken,
+              block_type: 1,
+              children: ['h1Mismatch', 'h2Mismatch']
+            },
+            {
+              block_id: 'h1Mismatch',
+              block_type: 4,
+              heading1: {
+                elements: [{ text_run: { content: '用途', text_element_style: {} } }]
+              }
+            },
+            {
+              block_id: 'h2Mismatch',
+              block_type: 5,
+              heading2: {
+                elements: [{ text_run: { content: '用法', text_element_style: {} } }]
+              }
+            }
+          ]
+        }
+      });
+    }
+
+    throw new Error(`unexpected mock url: ${textUrl}`);
+  };
+
+  const result = await extractFeishuDocByApi({
+    url: `https://foodtalks.feishu.cn/docx/${docToken}`,
+    appId: 'app_id',
+    appSecret: 'app_secret',
+    fetchImpl: mockFetch
+  });
+
+  assert.equal(result.contentHtml.includes('<h1><span class="feishu-heading-seq">1</span> 用途</h1>'), true);
+  assert.equal(result.contentHtml.includes('<h2><span class="feishu-heading-seq">1.1</span> 用法</h2>'), true);
+});
+
 test('downloadFeishuImageAsDataUrl returns data url', async () => {
   const bytes = new Uint8Array([137, 80, 78, 71]);
 

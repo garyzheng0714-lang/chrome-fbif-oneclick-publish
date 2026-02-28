@@ -1,74 +1,64 @@
 # FBIF OneClick Publish Chrome Extension
 
-从公众号/飞书云文档提取内容并同步到 FoodTalks 后台的 Chrome 扩展。
+飞书文档到 FoodTalks / 公众号 的小弹窗同步插件。
 
-## 功能概览
+## 当前产品边界
 
-- 点击扩展图标，直接打开独立全屏分发页面（非 popup）
-- 输入公众号文章链接，自动提取标题、封面、正文和图片顺序
-- 飞书文档提取支持双策略：`OpenAPI 精准提取 -> 页面 DOM 兜底`
-- 飞书富文本格式适配：支持加粗/斜体/超链接/标题层级、列表、表格、并排布局、引用块、Callout、嵌入链接
-- 表格适配支持列宽、合并单元格、单元格文本对齐；图片支持备注（caption）自动绑定
-- 通用兜底已覆盖：代码块、任务列表、分割线、附件卡片、未知块占位与告警提示
-- 提取后展示完整性校验（字数、图片数、段落数、缺失项）
-- 页面简化为单流程：`链接提取 -> 正文预览 -> 同步 FoodTalks`
-- 一键触发 FoodTalks 后台「公众号文章采集」，失败时自动回退为手动填充标题/正文
-- 支持两种同步动作：`同步并保存草稿` / `同步并直接发布`
-- 同步失败自动回退草稿，支持一键复制
-- 缓存、重试、超时控制与日志追踪
-- 平台模块化架构（当前仅保留 `foodtalks` 模块，结构可扩展）
+- 来源：仅支持飞书文档（`docx` / `wiki`）
+- 目标平台：支持 FoodTalks 与公众号
+- 入口：点击扩展图标打开小弹窗（`popup.html`）
+- 默认流程：提取 → 选择目标 → 同步
 
-## 目录结构
+## 关键能力
 
-- `manifest.json`: MV3 扩展配置
-- `background.js`: 提取/缓存/发布/日志的后台编排
-- `app.html`: 主分发页
-- `fallback.html`: 发布失败的草稿回退页
-- `styles/app.css`: UI 样式
-- `styles/vendor/pico.min.css`: Pico CSS（开源组件库样式基础）
-- `src/app.js`: 页面业务逻辑
-- `src/platforms.js`: 平台配置（当前仅 `foodtalks`）
-- `src/sources/feishu/*`: 飞书来源模块（API 客户端、块渲染、图片下载）
-- `src/publishers/foodtalks/*`: FoodTalks 模块化实现（extractor/content/image/publish）
-- `scripts/package-extension.mjs`: ZIP + CRX 打包脚本
-- `docs/USAGE.md`: 使用说明
-- `docs/TEST_REPORT.md`: 测试报告（10 个链接样本）
-- `docs/PLATFORM_ADAPTERS.md`: 平台级适配表（选择器与策略）
+- 弹窗单按钮状态流转：`提取` → `选择目标后同步`
+- 提取过程无文字进度条（0%-100%）
+- 飞书提取双策略：OpenAPI 优先，页面 DOM 兜底
+- 图片拉取与 HTML 清洗，输出适配 FoodTalks 粘贴代码
+- 公众号自动同步状态：待登录 / 待编辑页 / 填充中 / 已完成 / 失败
+- 任务记录（最近 20 条）与最近配置重跑
+- 失败恢复动作：错误码 + 原因 + 推荐下一步
+
+## 目录（核心）
+
+- `manifest.json`：MV3 配置
+- `background.js`：提取/发布/检查/日志编排
+- `popup.html`：小弹窗页面
+- `src/popup.js`：弹窗状态逻辑
+- `src/shared/foodtalks-html.js`：共享 HTML 处理模块
+- `src/shared/wechat-html.js`：公众号 HTML 处理模块
+- `src/shared/error-mapping.js`：错误码与恢复动作映射
+- `src/sources/feishu/*`：飞书提取与图片下载
+- `src/publishers/foodtalks/*`：FoodTalks 发布适配
+- `src/publishers/shared/wechat-urls.js`：公众号 URL 判断与编辑页跳转
 
 ## 本地运行
-
-1. 安装依赖
 
 ```bash
 npm install
 ```
 
-2. 本地加载扩展
+加载扩展：
 
-- 打开 Chrome `chrome://extensions`
-- 开启“开发者模式”
-- 选择“加载已解压的扩展程序”
-- 选择项目根目录
+1. 打开 `chrome://extensions`
+2. 开启开发者模式
+3. 选择“加载已解压的扩展程序”
+4. 选择项目根目录
 
-3. 使用扩展
+## 使用方式
 
-- 点击工具栏扩展图标
-- 先填写飞书 `App ID / App Secret` 并保存（仅本地存储）
-- 在全屏页面输入公众号/飞书文档链接并提取
-- 预览后点击“同步并保存草稿”或“同步并直接发布”
+1. 点击扩展图标，打开弹窗
+2. 填写并保存飞书 `App ID / App Secret`
+3. 输入飞书文档链接并点击“提取内容”
+4. 在同步页选择目标（FoodTalks 或公众号）
+5. FoodTalks：复制代码并打开登录页（新标签）
+6. 公众号：自动检测登录并等待编辑页，随后自动填充标题与正文
 
-## 打包产物
+## 打包
 
 ```bash
 npm run package
 ```
-
-打包后在 `dist/` 生成：
-
-- `dist/fbif-oneclick-publish.zip`
-- `dist/fbif-oneclick-publish.crx`
-- `dist/extension/`（可直接加载的解压目录）
-- `.keys/fbif-oneclick-publish.pem`（CRX 私钥）
 
 ## 测试
 
@@ -76,7 +66,12 @@ npm run package
 npm test
 ```
 
-## 注意事项
+性能基准（5 万字 + 50 图）：
 
-- FoodTalks 后台若触发风控或登录失效，会导致自动同步失败，请先在同域保持登录状态。
-- 后台页面改版后，需更新 `src/publishers/foodtalks/selectors.js` 选择器表。
+```bash
+npm run benchmark:wechat-sync
+```
+
+## 已知问题
+
+- 暂无阻断性问题。

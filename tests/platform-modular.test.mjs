@@ -52,6 +52,9 @@ test('foodtalks selector table includes required controls', () => {
   assert.ok(Array.isArray(FOODTALKS_SELECTORS.essayButtonCandidates));
   assert.ok(Array.isArray(FOODTALKS_SELECTORS.draftButtonCandidates));
   assert.ok(Array.isArray(FOODTALKS_SELECTORS.publishButtonCandidates));
+  assert.ok(Array.isArray(FOODTALKS_SELECTORS.sourceCodeButtonCandidates));
+  assert.ok(Array.isArray(FOODTALKS_SELECTORS.sourceCodeInputCandidates));
+  assert.ok(Array.isArray(FOODTALKS_SELECTORS.sourceCodeSaveButtonCandidates));
 });
 
 test('foodtalks extractor enables importer only for wechat article urls', () => {
