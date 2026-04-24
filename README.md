@@ -1,59 +1,68 @@
 # FBIF OneClick Publish Chrome Extension
 
-飞书文档到 FoodTalks / 公众号 的同步插件，提供轻量弹窗与专业工作台两种入口。
+飞书云文档到 FoodTalks / 微信公众号后台的同步助手。扩展提供轻量弹窗、同步页和专业工作台三种入口，用于提取飞书文档内容、预览和校验文章，并将内容适配到目标发布平台。
 
 ## 当前产品边界
 
-- 来源：仅支持飞书文档（`docx` / `wiki`）
-- 目标平台：支持 FoodTalks 与公众号
-- 入口：
-  - 点击扩展图标打开轻量弹窗（`popup.html`），一键跳转同步页（`panel.html`）
-  - 专业工作台（`app.html`）：提取、预览、校验、自动发布一站式操作
-- 默认流程：弹窗识别链接 → 打开同步页 → 提取 → 选择目标 → 同步
+- 来源：飞书云文档链接，重点支持 `docx` / `wiki` 文档。
+- 目标平台：FoodTalks 后台和微信公众号后台。
+- 运行形态：Chrome Manifest V3 扩展。
+- 默认流程：弹窗识别链接 -> 打开同步页 -> 提取内容 -> 选择目标平台 -> 同步或填充。
 
 ## 关键能力
 
-- 弹窗作为启动器：识别飞书链接后打开同步页
-- 同步页单按钮状态流转：`提取` → `选择目标后同步`，提取过程按钮显示文字进度（0%-100%）
-- 飞书提取双策略：OpenAPI 优先，页面 DOM 兜底
-- 图片拉取（含并发控制与重试）与 HTML 清洗，输出适配 FoodTalks 粘贴代码
-- 公众号同步全流程状态：待登录 / 待编辑页 / 填充中 / 已完成 / 失败 / 已取消
-- 提取结果缓存（按标签页 + URL 双维度），支持重新提取
-- 大内容分片传输（content-transfer-service），突破消息大小限制
-- 公众号 HTML 在 Web Worker 中离主线程构建
-- 专业工作台功能：内容预览与编辑、字数/图片/段落统计、完整性校验、自动保存草稿 / 自动发布（Beta）、环境检查与恢复动作
-- 任务记录（最近 20 条）与最近配置重跑
-- 失败恢复动作：错误码 + 原因 + 推荐下一步
-- 标题层级归一化（heading-normalizer）
+- 弹窗入口：识别飞书链接并打开同步页。
+- 同步页：按 `提取 -> 选择目标 -> 同步` 的流程处理文章。
+- 专业工作台：提供内容预览、编辑、统计、完整性校验、运行日志和恢复动作。
+- 飞书内容提取：OpenAPI 优先，页面 DOM 作为兜底。
+- 图片处理：支持图片拉取、并发控制、重试和 HTML 清洗。
+- FoodTalks 适配：生成适合 FoodTalks 粘贴 / 发布流程的内容。
+- 微信公众号适配：构建公众号编辑页所需 HTML，并通过分片传输处理大内容。
+- 任务记录：保存最近任务和最近配置，支持重跑。
+- 错误处理：错误码、原因和推荐下一步集中映射。
 
-## 目录（核心）
+## 技术栈
 
-- `manifest.json`：MV3 配置
-- `background.js`：提取/发布/检查/日志/公众号同步编排
-- `popup.html` + `src/popup-launcher.js`：轻量弹窗，识别链接并跳转同步页
-- `panel.html` + `src/panel.js`：同步页，提取 → 选择目标 → 同步
-- `app.html` + `src/app.js`：专业工作台（提取、预览、校验、自动发布、日志）
-- `fallback.html`：降级页面
-- `src/shared/foodtalks-html.js`：FoodTalks HTML 处理模块
-- `src/shared/wechat-html.js`：公众号 HTML 处理模块
-- `src/shared/error-mapping.js`：错误码与恢复动作映射
-- `src/shared/popup-flow.js`：同步页状态流转与按钮配置
-- `src/shared/popup-extract-cache.js`：提取结果缓存键管理
-- `src/shared/workbench-state.js`：工作台状态机与权限
-- `src/shared/wechat-sync-payload.js`：公众号同步数据构建
-- `src/shared/wechat-sync-transfer.js`：公众号同步分片传输
-- `src/shared/wechat-editor-order.js`：公众号编辑页排序签名
-- `src/sources/feishu/*`：飞书提取与图片下载
-- `src/publishers/foodtalks/*`：FoodTalks 内容处理与发布 API
-- `src/publishers/shared/foodtalks-urls.js`：FoodTalks URL 判断与跳转
-- `src/publishers/shared/wechat-urls.js`：公众号 URL 判断与编辑页跳转
-- `src/publishers/shared/heading-normalizer.js`：标题层级归一化
-- `src/publishers/shared/image-fetch.js`：图片拉取
-- `src/background/content-transfer-service.js`：大内容分片传输服务
-- `src/background/injected/page-scripts.js`：注入目标页面的脚本
-- `src/workers/wechat-html.worker.js`：公众号 HTML 构建 Worker
+- Chrome Manifest V3
+- 原生 JavaScript ES Modules
+- Web Worker
+- Pico CSS
+- Node.js 测试工具链（`node --test`、jsdom）
+- 打包脚本：`archiver`、`crx3`、`fs-extra`
 
-## 本地运行
+## 项目结构
+
+```text
+.
+├── manifest.json                    # Chrome MV3 配置
+├── background.js                    # 后台服务入口
+├── popup.html                       # 轻量弹窗
+├── panel.html                       # 同步页
+├── app.html                         # 专业工作台
+├── fallback.html                    # 降级页面
+├── src/
+│   ├── background/                  # 后台编排、注入脚本、分片传输
+│   ├── publishers/                  # FoodTalks / 公众号发布适配
+│   ├── shared/                      # HTML、缓存、错误映射、状态机等共享模块
+│   ├── sources/                     # 飞书来源提取
+│   └── workers/                     # 公众号 HTML Worker
+├── styles/
+├── tests/
+├── docs/
+└── README.md
+```
+
+## 权限说明
+
+扩展在 `manifest.json` 中声明以下能力：
+
+- `tabs` / `windows`：管理同步页和目标平台页面。
+- `storage`：保存凭据、任务记录和配置。
+- `scripting` / `activeTab`：向当前页面注入提取或填充脚本。
+- `clipboardWrite`：支持复制适配后的内容。
+- Host permissions：访问飞书 / Lark、FoodTalks 和微信公众号相关页面。
+
+## 本地安装
 
 ```bash
 npm install
@@ -61,45 +70,51 @@ npm install
 
 加载扩展：
 
-1. 打开 `chrome://extensions`
-2. 开启开发者模式
-3. 选择”加载已解压的扩展程序”
-4. 选择项目根目录
+1. 打开 `chrome://extensions`。
+2. 开启开发者模式。
+3. 选择“加载已解压的扩展程序”。
+4. 选择本仓库根目录。
 
-## 使用方式
+## 使用流程
 
-1. 点击扩展图标，打开弹窗
-2. 填写并保存飞书 `App ID / App Secret`（凭据设置面板）
-3. 确认飞书文档链接后点击”提取并打开同步页”
-4. 在同步页选择目标（FoodTalks 或公众号）
-5. FoodTalks：复制代码并打开登录页（新标签）
-6. 公众号：自动检测登录并等待编辑页，随后自动填充标题与正文
+1. 点击扩展图标打开弹窗。
+2. 在凭据设置面板中填写并保存飞书 `App ID` / `App Secret`。
+3. 输入或确认飞书文档链接。
+4. 点击“提取并打开同步页”。
+5. 在同步页选择 FoodTalks 或微信公众号。
+6. 根据目标平台状态完成复制、跳转、填充或发布操作。
 
-专业工作台（`app.html`）额外支持：
+专业工作台（`app.html`）适合更长内容或需要人工检查的流程，可用于：
 
-- 内容预览与手动编辑
-- 自动保存草稿 / 自动发布（Beta）
-- 环境检查与诊断
-- 运行日志查看与清空
+- 内容预览和手动编辑
+- 字数、图片和段落统计
+- 完整性校验
+- 自动保存草稿 / 自动发布相关实验能力
+- 环境检查、运行日志和失败恢复
 
-## 打包
-
-```bash
-npm run package
-```
-
-## 测试
+## 常用命令
 
 ```bash
 npm test
-```
-
-性能基准（5 万字 + 50 图）：
-
-```bash
 npm run benchmark:wechat-sync
+npm run package
 ```
 
-## 已知问题
+说明：
 
-- 暂无阻断性问题。
+- `npm test` 使用 Node.js 内置测试运行 `tests/*.test.mjs`。
+- `npm run benchmark:wechat-sync` 运行微信公众号同步性能基准。
+- `npm run package` 调用 `scripts/package-extension.mjs` 打包扩展。
+
+## 文档
+
+- [docs/USAGE.md](./docs/USAGE.md)：使用说明
+- [docs/PLATFORM_ADAPTERS.md](./docs/PLATFORM_ADAPTERS.md)：平台适配说明
+- [docs/FEISHU_TO_FOODTALKS_MAPPING.md](./docs/FEISHU_TO_FOODTALKS_MAPPING.md)：飞书到 FoodTalks 字段 / 内容映射
+- [docs/TEST_REPORT.md](./docs/TEST_REPORT.md)：测试报告
+
+## 注意事项
+
+- 飞书应用凭据和目标平台登录状态均保存在本地浏览器环境，请勿提交个人凭据。
+- 微信公众号自动填充依赖目标页面结构和当前登录状态；页面变更时需要重新验证选择器和填充顺序。
+- FoodTalks 和微信公众号发布链路涉及外部后台，运行前建议先用测试文章验证。
