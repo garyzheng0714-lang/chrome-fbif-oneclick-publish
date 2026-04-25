@@ -1,6 +1,18 @@
-# FBIF OneClick Publish Chrome Extension
+# chrome-fbif-oneclick-publish
 
-飞书云文档到 FoodTalks / 微信公众号后台的同步助手。扩展提供轻量弹窗、同步页和专业工作台三种入口，用于提取飞书文档内容、预览和校验文章，并将内容适配到目标发布平台。
+![类型](https://img.shields.io/badge/%E7%B1%BB%E5%9E%8B-Chrome%20%E6%8F%92%E4%BB%B6-2563eb?style=flat-square)
+![技术栈](https://img.shields.io/badge/%E6%8A%80%E6%9C%AF%E6%A0%88-JavaScript%20MV3-0f766e?style=flat-square)
+![状态](https://img.shields.io/badge/%E7%8A%B6%E6%80%81-%E5%8F%91%E5%B8%83%E5%8A%A9%E6%89%8B-16a34a?style=flat-square)
+![README](https://img.shields.io/badge/README-%E4%B8%AD%E6%96%87-brightgreen?style=flat-square)
+
+Chrome 插件：将飞书云文档内容提取并适配到 FoodTalks 与微信公众号发布后台的 FBIF 一键发布助手。
+
+## 仓库定位
+
+- 分类：Chrome Manifest V3 扩展 / FBIF 内容发布工具。
+- 面向对象：需要把飞书云文档文章同步到 FoodTalks 或微信公众号后台的内容运营与开发人员。
+- 运行宿主：Chrome 浏览器扩展环境，以及目标发布平台页面。
+- 与微信工具仓库的区别：本仓库聚焦从飞书文档到发布后台的浏览器侧同步，不是公众号排版渲染服务或微信客服系统。
 
 ## 当前产品边界
 
